@@ -423,16 +423,28 @@ export default function TripsPage() {
 
           {/* BUS VEHICLE BODY CONTAINER */}
           <div className="relative mx-auto w-full max-w-[340px] rounded-3xl border-2 border-slate-300 bg-slate-100 p-3 shadow-inner sm:p-5">
-            <div className="w-full h-8 bg-slate-800 rounded-t-2xl mb-4 flex items-center justify-center text-[10px] text-slate-300 font-mono tracking-widest uppercase">
-              Лобовое стекло
+            {/* BUS WINDSHIELD & CABIN HEADER */}
+            <div className="w-full h-9 bg-slate-900 rounded-t-2xl mb-4 flex items-center justify-between px-4 text-[10px] text-slate-300 font-mono tracking-widest uppercase shadow-xs">
+              <span>Лобовое стекло</span>
+              <span className="text-[9px] text-slate-400">Mercedes Sprinter</span>
             </div>
 
-            <div className="flex items-center justify-between px-2 mb-6 text-xs pb-3 border-b border-slate-300">
-              <div className="flex h-10 min-w-14 items-center justify-center rounded-xl bg-slate-700 px-1 text-center text-[9px] font-bold leading-tight text-white">
-                Водитель
+            <div className="flex items-center justify-between px-2 mb-5 text-xs pb-3 border-b border-slate-200">
+              <div className="flex h-11 px-3 items-center gap-2 rounded-xl bg-slate-800 text-white shadow-xs">
+                {/* Steering wheel svg */}
+                <svg className="w-4 h-4 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a10 10 0 0 0-4 18l4-8 4 8a10 10 0 0 0-4-18z"/>
+                  <circle cx="12" cy="12" r="2"/>
+                </svg>
+                <div className="text-left">
+                  <span className="block text-[10px] font-bold leading-tight">Водитель</span>
+                  <span className="block text-[8px] text-slate-400">С. Васильев</span>
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                Входная дверь ↗
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1">
+                <span>Входная дверь</span>
+                <span className="text-slate-600 font-bold">↗</span>
               </div>
             </div>
 
