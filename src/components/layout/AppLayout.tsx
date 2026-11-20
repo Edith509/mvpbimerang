@@ -227,7 +227,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
 
   /* ══════════════════════════════════════════════════════════ */
   return (
-    <div className="app-shell flex h-[100dvh] w-full overflow-hidden bg-white text-slate-900">
+    <div className="app-shell flex h-[100dvh] w-full overflow-hidden bg-slate-100 text-slate-900">
 
       {/* ── DESKTOP SIDEBAR ─────────────────────────────────── */}
       <aside className="desktop-sidebar hidden lg:flex w-64 flex-shrink-0 bg-white border-r border-slate-200 flex-col z-20">
@@ -248,12 +248,12 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
       )}
 
       {/* ── MAIN CONTENT AREA ───────────────────────────────── */}
-      <div className="app-content flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="app-content flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100">
 
         {/* ── PAGE CONTENT ─────────────────────────────────── */}
         {/* pb-16 leaves room for the fixed bottom nav on mobile */}
         <main
-          className="flex-1 overflow-y-auto overflow-x-hidden bg-white p-3 sm:p-5 lg:p-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8"
+          className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-100 p-3 sm:p-5 lg:p-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <div className="max-w-7xl mx-auto w-full">

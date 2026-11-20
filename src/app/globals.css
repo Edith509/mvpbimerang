@@ -2,7 +2,7 @@
 
 @layer base {
   :root {
-    --background: #ffffff;
+    --background: #f1f5f9;
     --foreground: #17212f;
     --primary: #c62828;
     --primary-hover: #ad2020;
@@ -63,7 +63,7 @@
 }
 
 .app-content main {
-  background-color: #fff;
+  background-color: #f1f5f9;
 }
 
 .app-content main .text-slate-400 {
