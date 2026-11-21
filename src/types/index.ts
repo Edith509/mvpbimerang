@@ -90,6 +90,12 @@ export interface Vehicle {
   type: 'minibus' | 'bus';
   status: VehicleStatus;
   currentLocation: string;
+  baseCity?: string;
+  garageNumber?: string;
+  vin?: string;
+  assignedDriverId?: string;
+  assignedDriverName?: string;
+  photos?: string[];
   mileageKm: number;
   nextServiceKm: number;
   incidents: Incident[];
@@ -143,6 +149,32 @@ export interface Trip {
 
 export type BookingStatus = 'new' | 'confirmed' | 'paid' | 'cancelled';
 export type BoardingStatus = 'waiting' | 'boarded' | 'no_show';
+
+export type RequestStatus = 'new' | 'in_progress' | 'assigned' | 'cancelled';
+export type RequestType = 'passenger' | 'parcel';
+
+export interface PassengerRequest {
+  id: string;
+  requestNumber: string;
+  passengerName: string;
+  phone: string;
+  fromCity: string;
+  toCity: string;
+  desiredDate: string;
+  desiredTime?: string;
+  seatsCount: number;
+  type: RequestType;
+  parcelDescription?: string;
+  status: RequestStatus;
+  assignedTripId?: string;
+  assignedTripNumber?: string;
+  assignedSeatNumber?: number;
+  source: 'telegram' | 'website' | 'phone' | 'dispatcher';
+  priceEstimate?: number;
+  currency: 'RUB' | 'KZT' | 'BYN';
+  notes?: string;
+  createdAt: string;
+}
 
 export interface Booking {
   id: string;

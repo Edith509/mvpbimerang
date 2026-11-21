@@ -14,6 +14,8 @@ import {
   Role,
   Incident,
   BoardingStatus,
+  PassengerRequest,
+  RequestStatus,
 } from '@/types';
 import {
   INITIAL_COMPANY,
@@ -25,6 +27,7 @@ import {
   INITIAL_PASSENGERS,
   INITIAL_ACCOUNTS,
   INITIAL_TRANSACTIONS,
+  INITIAL_REQUESTS,
 } from './mockData';
 
 interface AppContextType {
@@ -35,12 +38,31 @@ interface AppContextType {
   routes: Route[];
   trips: Trip[];
   bookings: Booking[];
+  requests: PassengerRequest[];
   passengers: Passenger[];
   accounts: FinanceAccount[];
   transactions: Transaction[];
   getAccountBalance: (accountId: string) => number;
   switchUserRole: (role: Role) => void;
   assignVehicleAndDriver: (tripId: string, vehicleId: string, driverId: string) => void;
+  createRequest: (params: {
+    passengerName: string;
+    phone: string;
+    fromCity: string;
+    toCity: string;
+    desiredDate: string;
+    desiredTime?: string;
+    seatsCount: number;
+    type?: 'passenger' | 'parcel';
+    parcelDescription?: string;
+    priceEstimate?: number;
+    currency?: 'RUB' | 'KZT' | 'BYN';
+    notes?: string;
+    source?: 'telegram' | 'website' | 'phone' | 'dispatcher';
+  }) => string;
+  assignRequestToTrip: (requestId: string, tripId: string, seatNumber?: number) => void;
+  updateRequestStatus: (requestId: string, status: RequestStatus) => void;
+  deleteRequest: (requestId: string) => void;
   createBookingWithPayment: (params: {
     tripId: string;
     fullName: string;
@@ -85,7 +107,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const STORAGE_KEY = 'bumerang_demo_state_v3';
+const STORAGE_KEY = 'bumerang_demo_state_v4';
 
 function calculateAccountBalance(transactions: Transaction[], accountId: string) {
   return transactions
@@ -152,6 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES);
   const [trips, setTrips] = useState<Trip[]>(INITIAL_TRIPS);
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
+  const [requests, setRequests] = useState<PassengerRequest[]>(INITIAL_REQUESTS);
   const [passengers, setPassengers] = useState<Passenger[]>(INITIAL_PASSENGERS);
   const [accounts, setAccounts] = useState<FinanceAccount[]>(INITIAL_ACCOUNTS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
@@ -178,6 +201,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 serviceRecords: v.serviceRecords?.length ? v.serviceRecords : defaultV?.serviceRecords || [],
                 equipment: v.equipment?.length ? v.equipment : defaultV?.equipment || [],
                 incidents: v.incidents || [],
+                photos: v.photos?.length ? v.photos : defaultV?.photos || [],
+                baseCity: v.baseCity || defaultV?.baseCity,
+                garageNumber: v.garageNumber || defaultV?.garageNumber,
+                assignedDriverName: v.assignedDriverName || defaultV?.assignedDriverName,
               };
             })
           );
@@ -185,6 +212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.routes) setRoutes(parsed.routes);
         if (parsed.trips) setTrips(parsed.trips);
         if (parsed.bookings) setBookings(parsed.bookings);
+        if (Array.isArray(parsed.requests)) setRequests(parsed.requests);
         if (Array.isArray(parsed.passengers)) {
           setPassengers(
             parsed.passengers.map((passenger: Passenger & { lostItems?: unknown }) => {
@@ -217,6 +245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         routes,
         trips,
         bookings,
+        requests,
         passengers,
         accounts,
         transactions,
@@ -234,6 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     routes,
     trips,
     bookings,
+    requests,
     passengers,
     accounts,
     transactions,
@@ -748,9 +778,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRoutes(INITIAL_ROUTES);
     setTrips(INITIAL_TRIPS);
     setBookings(INITIAL_BOOKINGS);
+    setRequests(INITIAL_REQUESTS);
     setPassengers(INITIAL_PASSENGERS);
     setAccounts(INITIAL_ACCOUNTS);
     setTransactions(INITIAL_TRANSACTIONS);
+  };
+
+  const createRequest = (params: {
+    passengerName: string;
+    phone: string;
+    fromCity: string;
+    toCity: string;
+    desiredDate: string;
+    desiredTime?: string;
+    seatsCount: number;
+    type?: 'passenger' | 'parcel';
+    parcelDescription?: string;
+    priceEstimate?: number;
+    currency?: 'RUB' | 'KZT' | 'BYN';
+    notes?: string;
+    source?: 'telegram' | 'website' | 'phone' | 'dispatcher';
+  }) => {
+    const newId = `req_${Date.now()}`;
+    const nextNumber = `З-${1050 + requests.length}`;
+    const newReq: PassengerRequest = {
+      id: newId,
+      requestNumber: nextNumber,
+      passengerName: params.passengerName,
+      phone: params.phone,
+      fromCity: params.fromCity,
+      toCity: params.toCity,
+      desiredDate: params.desiredDate,
+      desiredTime: params.desiredTime,
+      seatsCount: params.seatsCount,
+      type: params.type || 'passenger',
+      parcelDescription: params.parcelDescription,
+      status: 'new',
+      source: params.source || 'dispatcher',
+      priceEstimate: params.priceEstimate,
+      currency: params.currency || 'RUB',
+      notes: params.notes,
+      createdAt: 'Только что',
+    };
+    setRequests((prev) => [newReq, ...prev]);
+    return newId;
+  };
+
+  const assignRequestToTrip = (requestId: string, tripId: string, seatNumber?: number) => {
+    const trip = trips.find((t) => t.id === tripId);
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'assigned',
+              assignedTripId: tripId,
+              assignedTripNumber: trip?.tripNumber || tripId,
+              assignedSeatNumber: seatNumber,
+            }
+          : r
+      )
+    );
+  };
+
+  const updateRequestStatus = (requestId: string, status: RequestStatus) => {
+    setRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status } : r))
+    );
+  };
+
+  const deleteRequest = (requestId: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
   return (
@@ -763,12 +861,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         routes,
         trips,
         bookings,
+        requests,
         passengers,
         accounts,
         transactions,
         getAccountBalance,
         switchUserRole,
         assignVehicleAndDriver,
+        createRequest,
+        assignRequestToTrip,
+        updateRequestStatus,
+        deleteRequest,
         createBookingWithPayment,
         markBookingPaid,
         collectCashByDriver,

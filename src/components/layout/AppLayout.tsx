@@ -17,13 +17,14 @@ import {
   X,
   FileBarChart,
   Sparkles,
+  Inbox,
 } from 'lucide-react';
 import { useApp } from '@/lib/store';
 import { Role } from '@/types';
 import { AIAssistantWidget } from '@/components/ai/AIAssistantWidget';
 
 /* ── Nav items per role ────────────────────────────────────── */
-function getNavItems(role: Role, pendingCount: number) {
+function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: number = 0) {
   switch (role) {
     case 'driver':
       return [
@@ -33,7 +34,7 @@ function getNavItems(role: Role, pendingCount: number) {
     case 'mechanic':
       return [
         { href: '/fleet',    label: 'Автопарк и дефекты', icon: Bus,         highlight: true },
-        { href: '/finances', label: 'Заявки на запчасти', icon: Wallet },
+        { href: '/finances', label: 'Расходы на ремонт',  icon: Wallet },
         { href: '/team',     label: 'Команда и права',    icon: ShieldCheck },
       ];
     case 'accountant':
@@ -47,12 +48,14 @@ function getNavItems(role: Role, pendingCount: number) {
     default:
       return [
         { href: '/',          label: 'Главная панель',      icon: LayoutDashboard },
+        { href: '/requests',  label: 'Заявки',              icon: Inbox,
+          badge: unassignedRequestsCount > 0 ? `${unassignedRequestsCount}` : undefined },
         { href: '/trips',     label: 'Маршруты и рейсы',    icon: Navigation,  highlight: true },
         { href: '/fleet',     label: 'Автопарк',            icon: Bus },
         { href: '/finances',  label: 'Финансы',             icon: Wallet,
           badge: pendingCount > 0 ? `${pendingCount}` : undefined },
         { href: '/reports',   label: 'Отчётность',          icon: FileBarChart },
-        { href: '/customers', label: 'База клиентов', icon: Users },
+        { href: '/customers', label: 'База клиентов',       icon: Users },
         { href: '/team',      label: 'Команда и права',     icon: ShieldCheck },
         { href: '/settings',  label: 'Настройки компании',  icon: Settings },
       ];
@@ -60,25 +63,31 @@ function getNavItems(role: Role, pendingCount: number) {
 }
 
 function getLandingPath(role: Role) {
-  return getNavItems(role, 0)[0]?.href || '/';
+  return getNavItems(role, 0, 0)[0]?.href || '/';
 }
 
 /* ═══════════════════════════════════════════════════════════ */
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-  const { company, currentUser, users, switchUserRole, resetToDemo, transactions } = useApp();
+  const { company, currentUser, users, switchUserRole, resetToDemo, transactions, requests } = useApp();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
 
   const pendingCount = transactions.filter((t) => t.status === 'pending_approval').length;
-  const navItems = getNavItems(currentUser.role, pendingCount);
+  const unassignedRequestsCount = (requests || []).filter((r) => r.status === 'new').length;
+  const navItems = getNavItems(currentUser.role, pendingCount, unassignedRequestsCount);
   const landingPath = getLandingPath(currentUser.role);
-  const canAccessPage = navItems.some((item) => item.href === pathname);
+  const canAccessPage = navItems.some((item) => {
+    if (item.href === pathname) return true;
+    if (item.href !== '/' && pathname.startsWith(item.href + '/')) return true;
+    return false;
+  });
   const mobileNavLabels: Record<string, string> = {
     '/': 'Обзор',
+    '/requests': 'Заявки',
     '/trips': 'Рейсы',
     '/fleet': 'Автопарк',
     '/finances': 'Финансы',
