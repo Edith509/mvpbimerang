@@ -61,6 +61,7 @@ interface AppContextType {
     source?: 'telegram' | 'website' | 'phone' | 'dispatcher';
   }) => string;
   assignRequestToTrip: (requestId: string, tripId: string, seatNumber?: number) => void;
+  unassignRequestFromTrip: (requestId: string) => void;
   updateRequestStatus: (requestId: string, status: RequestStatus) => void;
   deleteRequest: (requestId: string) => void;
   createBookingWithPayment: (params: {
@@ -107,7 +108,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const STORAGE_KEY = 'bumerang_demo_state_v4';
+const STORAGE_KEY = 'bumerang_demo_state_v5';
 
 function calculateAccountBalance(transactions: Transaction[], accountId: string) {
   return transactions
@@ -841,6 +842,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const unassignRequestFromTrip = (requestId: string) => {
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'new',
+              assignedTripId: undefined,
+              assignedTripNumber: undefined,
+              assignedSeatNumber: undefined,
+            }
+          : r
+      )
+    );
+  };
+
   const updateRequestStatus = (requestId: string, status: RequestStatus) => {
     setRequests((prev) =>
       prev.map((r) => (r.id === requestId ? { ...r, status } : r))
@@ -870,6 +887,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assignVehicleAndDriver,
         createRequest,
         assignRequestToTrip,
+        unassignRequestFromTrip,
         updateRequestStatus,
         deleteRequest,
         createBookingWithPayment,
