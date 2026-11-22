@@ -61,7 +61,7 @@ export default function TripsPage() {
   const [fromStop, setFromStop] = useState('Москва (Северные Ворота)');
   const [toStop, setToStop] = useState('Минск (Центральный)');
   const [payNow, setPayNow] = useState(true);
-  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || 'acc_cash_rub');
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || 'acc_cash');
   const [lastCreatedBooking, setLastCreatedBooking] = useState<{
     bookingId: string;
     passengerId: string;

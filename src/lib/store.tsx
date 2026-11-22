@@ -107,7 +107,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const STORAGE_KEY = 'bumerang_demo_state_v4';
+const STORAGE_KEY = 'bumerang_demo_state_v6';
 
 function calculateAccountBalance(transactions: Transaction[], accountId: string) {
   return transactions
@@ -431,7 +431,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const booking = bookings.find((b) => b.id === bookingId);
     if (!booking) return;
 
-    const driverAccount = accounts.find((a) => a.id === 'acc_cash_driver') || accounts[1];
+    const cashAccount = accounts.find((a) => a.id === 'acc_cash') || accounts[1] || accounts[0];
     const nowStr = new Date().toLocaleString('ru-RU', {
       day: '2-digit',
       month: '2-digit',
@@ -447,7 +447,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: 'paid',
               boardingStatus: 'boarded',
               paymentMethod: 'Наличные водителю на посадке',
-              accountId: driverAccount.id,
+              accountId: cashAccount.id,
               collectedByDriver: true,
             }
           : b
@@ -458,7 +458,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
-      accountId: driverAccount.id,
+      accountId: cashAccount.id,
       type: 'income',
       category: 'ticket_sale',
       categoryLabel: 'Оплата наличными водителю (на посадке)',
@@ -776,7 +776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         price: trip.basePrice,
         currency: trip.currency,
         payNow: true,
-        accountId: 'acc_cash_rub',
+        accountId: 'acc_cash',
       });
       return {
         success: true,

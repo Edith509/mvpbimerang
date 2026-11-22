@@ -146,26 +146,58 @@ export default function FinancesPage() {
 
       {/* MULTI-CURRENCY ACCOUNTS CARDS */}
       {!isMechanic && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {accounts.map((acc) => {
           const currencySymbols: Record<string, string> = {
             RUB: '₽',
             BYN: 'BYN',
             KZT: '₸',
           };
+          const sym = currencySymbols[acc.currency] || acc.currency;
+          const accConfirmedTx = transactions.filter((t) => t.accountId === acc.id && t.status === 'confirmed');
+          const accIncome = accConfirmedTx
+            .filter((t) => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+          const accExpense = accConfirmedTx
+            .filter((t) => t.type === 'expense')
+            .reduce((sum, t) => sum + t.amount, 0);
+
           return (
             <div
               key={acc.id}
-              className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm"
+              className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-700">{acc.name}</h3>
-                <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{acc.currency}</span>
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800">{acc.name}</h3>
+                  <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 font-mono">
+                    {acc.currency}
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-slate-900 mt-2 tracking-tight">
+                  {getAccountBalance(acc.id).toLocaleString('ru-RU')} {sym}
+                </div>
               </div>
-              <div className="text-xl font-bold text-slate-900 mt-1">
-                {getAccountBalance(acc.id).toLocaleString('ru-RU')} {currencySymbols[acc.currency] || acc.currency}
+
+              {/* Отдельные блоки: Доход и Расход */}
+              <div className="mt-3.5 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-emerald-800 uppercase tracking-wider block">
+                    Доход
+                  </span>
+                  <span className="font-bold text-emerald-700 text-xs sm:text-sm mt-0.5 block truncate">
+                    +{accIncome.toLocaleString('ru-RU')} {sym}
+                  </span>
+                </div>
+                <div className="bg-rose-50/70 border border-rose-100 rounded-xl p-2.5">
+                  <span className="text-[10px] font-semibold text-rose-800 uppercase tracking-wider block">
+                    Расход
+                  </span>
+                  <span className="font-bold text-rose-700 text-xs sm:text-sm mt-0.5 block truncate">
+                    −{accExpense.toLocaleString('ru-RU')} {sym}
+                  </span>
+                </div>
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">Баланс по операциям</p>
             </div>
           );
         })}

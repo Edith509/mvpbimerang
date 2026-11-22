@@ -107,7 +107,7 @@ export default function VehicleDetailPage() {
   const handleFuelSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     addExpenseRequest({
-      accountId: 'acc_cash_driver',
+      accountId: 'acc_cash',
       category: 'fuel',
       categoryLabel: 'ГСМ / Заправка водителем',
       amount: fuelAmount,
