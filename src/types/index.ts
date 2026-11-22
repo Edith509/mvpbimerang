@@ -102,6 +102,33 @@ export interface Vehicle {
   equipment: VehicleEquipmentItem[];
   documents: DocumentAttachment[];
   serviceRecords: ServiceRecord[];
+  isArchived?: boolean;
+}
+
+export interface Trailer {
+  id: string;
+  model: string;
+  plateNumber: string;
+  garageNumber?: string;
+  capacityKg: number;
+  volumeM3: number;
+  status: VehicleStatus;
+  currentLocation: string;
+  baseCity: string;
+  assignedVehicleId?: string;
+  assignedVehiclePlate?: string;
+  year: number;
+  isArchived?: boolean;
+}
+
+export interface ActivityLogItem {
+  id: string;
+  timestamp: string;
+  actorName: string;
+  action: 'create' | 'update' | 'archive' | 'status_change';
+  entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+  entityName: string;
+  details: string;
 }
 
 export interface RouteStop {
@@ -120,6 +147,7 @@ export interface Route {
   totalDistanceKm: number;
   estimatedDurationHours: number;
   stops: RouteStop[];
+  isArchived?: boolean;
 }
 
 export type TripStatus = 'scheduled' | 'boarding' | 'in_progress' | 'completed' | 'cancelled';
@@ -140,11 +168,13 @@ export interface Trip {
   departureDate: string;
   departureTime: string;
   vehicleId?: string;
+  trailerId?: string;
   driverId?: string;
   status: TripStatus;
   basePrice: number;
   currency: 'RUB' | 'KZT' | 'BYN';
   checkpoints: TripCheckpoint[];
+  isArchived?: boolean;
 }
 
 export type BookingStatus = 'new' | 'confirmed' | 'paid' | 'cancelled';

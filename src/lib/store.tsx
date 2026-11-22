@@ -5,6 +5,7 @@ import {
   Company,
   User,
   Vehicle,
+  Trailer,
   Route,
   Trip,
   Booking,
@@ -16,11 +17,14 @@ import {
   BoardingStatus,
   PassengerRequest,
   RequestStatus,
+  ActivityLogItem,
+  TripCheckpoint,
 } from '@/types';
 import {
   INITIAL_COMPANY,
   INITIAL_USERS,
   INITIAL_VEHICLES,
+  INITIAL_TRAILERS,
   INITIAL_ROUTES,
   INITIAL_TRIPS,
   INITIAL_BOOKINGS,
@@ -28,6 +32,7 @@ import {
   INITIAL_ACCOUNTS,
   INITIAL_TRANSACTIONS,
   INITIAL_REQUESTS,
+  INITIAL_ACTIVITIES,
 } from './mockData';
 
 interface AppContextType {
@@ -35,6 +40,7 @@ interface AppContextType {
   currentUser: User;
   users: User[];
   vehicles: Vehicle[];
+  trailers: Trailer[];
   routes: Route[];
   trips: Trip[];
   bookings: Booking[];
@@ -42,9 +48,28 @@ interface AppContextType {
   passengers: Passenger[];
   accounts: FinanceAccount[];
   transactions: Transaction[];
+  activities: ActivityLogItem[];
   getAccountBalance: (accountId: string) => number;
   switchUserRole: (role: Role) => void;
   assignVehicleAndDriver: (tripId: string, vehicleId: string, driverId: string) => void;
+  createVehicle: (params: Partial<Vehicle>) => string;
+  updateVehicle: (id: string, params: Partial<Vehicle>) => void;
+  archiveVehicle: (id: string) => void;
+  createTrailer: (params: Partial<Trailer>) => string;
+  updateTrailer: (id: string, params: Partial<Trailer>) => void;
+  archiveTrailer: (id: string) => void;
+  createRoute: (params: Partial<Route>) => string;
+  updateRoute: (id: string, params: Partial<Route>) => void;
+  archiveRoute: (id: string) => void;
+  createTrip: (params: Partial<Trip>) => string;
+  updateTrip: (id: string, params: Partial<Trip>) => void;
+  archiveTrip: (id: string) => void;
+  logActivity: (params: {
+    action: 'create' | 'update' | 'archive' | 'status_change';
+    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+    entityName: string;
+    details: string;
+  }) => void;
   createRequest: (params: {
     passengerName: string;
     phone: string;
@@ -107,7 +132,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const STORAGE_KEY = 'bumerang_demo_state_v6';
+const STORAGE_KEY = 'bumerang_demo_state_v7';
 
 function calculateAccountBalance(transactions: Transaction[], accountId: string) {
   return transactions
@@ -171,6 +196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[1]); // Default: 'Дмитрий Орлов (Логист)'
   const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
+  const [trailers, setTrailers] = useState<Trailer[]>(INITIAL_TRAILERS);
   const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES);
   const [trips, setTrips] = useState<Trip[]>(INITIAL_TRIPS);
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
@@ -178,6 +204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [passengers, setPassengers] = useState<Passenger[]>(INITIAL_PASSENGERS);
   const [accounts, setAccounts] = useState<FinanceAccount[]>(INITIAL_ACCOUNTS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [activities, setActivities] = useState<ActivityLogItem[]>(INITIAL_ACTIVITIES);
 
   const getAccountBalance = (accountId: string) =>
     calculateAccountBalance(transactions, accountId);
@@ -209,6 +236,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             })
           );
         }
+        if (Array.isArray(parsed.trailers)) setTrailers(parsed.trailers);
+        if (Array.isArray(parsed.activities)) setActivities(parsed.activities);
         if (parsed.routes) setRoutes(parsed.routes);
         if (parsed.trips) setTrips(parsed.trips);
         if (parsed.bookings) setBookings(parsed.bookings);
@@ -242,6 +271,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         currentUser,
         vehicles,
+        trailers,
         routes,
         trips,
         bookings,
@@ -249,6 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         passengers,
         accounts,
         transactions,
+        activities,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -260,6 +291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     users,
     currentUser,
     vehicles,
+    trailers,
     routes,
     trips,
     bookings,
@@ -267,6 +299,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     passengers,
     accounts,
     transactions,
+    activities,
   ]);
 
   const switchUserRole = (role: Role) => {
@@ -873,6 +906,272 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
+  const logActivity = (params: {
+    action: 'create' | 'update' | 'archive' | 'status_change';
+    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+    entityName: string;
+    details: string;
+  }) => {
+    const nowStr = new Date().toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const newAct: ActivityLogItem = {
+      id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: nowStr,
+      actorName: currentUser.name,
+      ...params,
+    };
+    setActivities((prev) => [newAct, ...prev]);
+  };
+
+  const createVehicle = (params: Partial<Vehicle>): string => {
+    const newId = `veh_${Date.now()}`;
+    const newVehicle: Vehicle = {
+      id: newId,
+      brandModel: params.brandModel || 'Mercedes-Benz Sprinter 516',
+      plateNumber: params.plateNumber || 'А 000 АА 77',
+      garageNumber: params.garageNumber || `ГАРАЖ-0${vehicles.length + 1}`,
+      seatsCount: params.seatsCount || 19,
+      year: params.year || 2023,
+      type: params.type || 'minibus',
+      status: params.status || 'ready',
+      currentLocation: params.currentLocation || 'База Москва',
+      baseCity: params.baseCity || 'Москва',
+      mileageKm: params.mileageKm || 120000,
+      nextServiceKm: params.nextServiceKm || 130000,
+      vin: params.vin || 'WDB906' + Math.floor(Math.random() * 1000000),
+      assignedDriverName: params.assignedDriverName || 'Диспетчерский резерв',
+      photos: params.photos?.length ? params.photos : ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80'],
+      incidents: [],
+      equipment: [
+        { id: `eq_1_${Date.now()}`, name: 'Тахограф СКЗИ (калиброван)', category: 'docs', required: true, status: 'present' },
+        { id: `eq_2_${Date.now()}`, name: 'Аптечка первой помощи (ГОСТ)', category: 'safety', required: true, status: 'present' },
+        { id: `eq_3_${Date.now()}`, name: 'Огнетушитель ОП-4 (2 шт)', category: 'safety', required: true, status: 'present' },
+      ],
+      documents: [],
+      serviceRecords: [],
+      ...params,
+    };
+    setVehicles((prev) => [newVehicle, ...prev]);
+    logActivity({
+      action: 'create',
+      entityType: 'vehicle',
+      entityName: `${newVehicle.brandModel} (${newVehicle.plateNumber})`,
+      details: `Машина поставлена на баланс. База: ${newVehicle.baseCity}, ${newVehicle.seatsCount} мест.`,
+    });
+    return newId;
+  };
+
+  const updateVehicle = (id: string, params: Partial<Vehicle>) => {
+    setVehicles((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, ...params } : v))
+    );
+    const v = vehicles.find((item) => item.id === id);
+    if (v) {
+      logActivity({
+        action: 'update',
+        entityType: 'vehicle',
+        entityName: `${params.brandModel || v.brandModel} (${params.plateNumber || v.plateNumber})`,
+        details: `Отредактированы параметры машины.`,
+      });
+    }
+  };
+
+  const archiveVehicle = (id: string) => {
+    const v = vehicles.find((item) => item.id === id);
+    setVehicles((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
+    );
+    if (v) {
+      logActivity({
+        action: 'archive',
+        entityType: 'vehicle',
+        entityName: `${v.brandModel} (${v.plateNumber})`,
+        details: `Машина отправлена в архив автопарка.`,
+      });
+    }
+  };
+
+  const createTrailer = (params: Partial<Trailer>): string => {
+    const newId = `trl_${Date.now()}`;
+    const newTrailer: Trailer = {
+      id: newId,
+      model: params.model || 'МЗСА 817717 (Тент)',
+      plateNumber: params.plateNumber || 'АЕ 0000 77',
+      garageNumber: params.garageNumber || `ПР-0${trailers.length + 1}`,
+      capacityKg: params.capacityKg || 750,
+      volumeM3: params.volumeM3 || 8.5,
+      status: params.status || 'ready',
+      currentLocation: params.currentLocation || 'База',
+      baseCity: params.baseCity || 'Москва',
+      year: params.year || 2023,
+      ...params,
+    };
+    setTrailers((prev) => [newTrailer, ...prev]);
+    logActivity({
+      action: 'create',
+      entityType: 'trailer',
+      entityName: `Прицеп ${newTrailer.model} (${newTrailer.plateNumber})`,
+      details: `Прицеп принят в автопарк. Грузоподъемность: ${newTrailer.capacityKg} кг, объем: ${newTrailer.volumeM3} м³.`,
+    });
+    return newId;
+  };
+
+  const updateTrailer = (id: string, params: Partial<Trailer>) => {
+    setTrailers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...params } : t))
+    );
+    const t = trailers.find((item) => item.id === id);
+    if (t) {
+      logActivity({
+        action: 'update',
+        entityType: 'trailer',
+        entityName: `Прицеп ${params.model || t.model} (${params.plateNumber || t.plateNumber})`,
+        details: `Обновлены параметры прицепа.`,
+      });
+    }
+  };
+
+  const archiveTrailer = (id: string) => {
+    const t = trailers.find((item) => item.id === id);
+    setTrailers((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
+    );
+    if (t) {
+      logActivity({
+        action: 'archive',
+        entityType: 'trailer',
+        entityName: `Прицеп ${t.model} (${t.plateNumber})`,
+        details: `Прицеп отправлен в архив автопарка.`,
+      });
+    }
+  };
+
+  const createRoute = (params: Partial<Route>): string => {
+    const newId = `route_${Date.now()}`;
+    const newRoute: Route = {
+      id: newId,
+      name: params.name || `${params.departureCity || 'Город А'} — ${params.arrivalCity || 'Город Б'}`,
+      departureCity: params.departureCity || 'Город А',
+      arrivalCity: params.arrivalCity || 'Город Б',
+      totalDistanceKm: params.totalDistanceKm || 500,
+      estimatedDurationHours: params.estimatedDurationHours || 7,
+      stops: params.stops || [],
+      ...params,
+    };
+    setRoutes((prev) => [newRoute, ...prev]);
+    logActivity({
+      action: 'create',
+      entityType: 'route',
+      entityName: `Маршрут «${newRoute.name}»`,
+      details: `Создан новый маршрут (${newRoute.totalDistanceKm} км, ~${newRoute.estimatedDurationHours} ч).`,
+    });
+    return newId;
+  };
+
+  const updateRoute = (id: string, params: Partial<Route>) => {
+    setRoutes((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...params } : r))
+    );
+    const r = routes.find((item) => item.id === id);
+    if (r) {
+      logActivity({
+        action: 'update',
+        entityType: 'route',
+        entityName: `Маршрут «${params.name || r.name}»`,
+        details: `Изменены параметры и промежуточные остановки маршрута.`,
+      });
+    }
+  };
+
+  const archiveRoute = (id: string) => {
+    const r = routes.find((item) => item.id === id);
+    setRoutes((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
+    );
+    if (r) {
+      logActivity({
+        action: 'archive',
+        entityType: 'route',
+        entityName: `Маршрут «${r.name}»`,
+        details: `Маршрут переведён в архив.`,
+      });
+    }
+  };
+
+  const createTrip = (params: Partial<Trip>): string => {
+    const newId = `trip_${Date.now()}`;
+    const route = routes.find((r) => r.id === params.routeId);
+    const checkpoints: TripCheckpoint[] = route?.stops?.map((s) => ({
+      stopId: s.id,
+      stopName: s.name,
+      scheduledTime: params.departureTime || '10:00',
+      isPassed: false,
+    })) || [
+      { stopId: 'st_1', stopName: params.routeName?.split('—')[0]?.trim() || 'Отправление', scheduledTime: params.departureTime || '10:00', isPassed: false },
+      { stopId: 'st_2', stopName: params.routeName?.split('—')[1]?.trim() || 'Прибытие', scheduledTime: '18:00', isPassed: false },
+    ];
+
+    const newTrip: Trip = {
+      id: newId,
+      tripNumber: params.tripNumber || `БУМ-${trips.length + 106}`,
+      routeId: params.routeId || route?.id || 'route_default',
+      routeName: params.routeName || route?.name || 'Новый рейс',
+      departureDate: params.departureDate || 'Сегодня',
+      departureTime: params.departureTime || '10:00',
+      vehicleId: params.vehicleId,
+      trailerId: params.trailerId,
+      driverId: params.driverId,
+      status: params.status || 'scheduled',
+      basePrice: params.basePrice || 3500,
+      currency: params.currency || 'RUB',
+      checkpoints,
+      ...params,
+    };
+    setTrips((prev) => [newTrip, ...prev]);
+    logActivity({
+      action: 'create',
+      entityType: 'trip',
+      entityName: `Рейс ${newTrip.tripNumber} (${newTrip.routeName})`,
+      details: `Сформирован рейс на ${newTrip.departureDate} ${newTrip.departureTime}. Базовая цена: ${newTrip.basePrice} ${newTrip.currency}.`,
+    });
+    return newId;
+  };
+
+  const updateTrip = (id: string, params: Partial<Trip>) => {
+    setTrips((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...params } : t))
+    );
+    const t = trips.find((item) => item.id === id);
+    if (t) {
+      logActivity({
+        action: 'update',
+        entityType: 'trip',
+        entityName: `Рейс ${t.tripNumber} (${params.routeName || t.routeName})`,
+        details: `Обновлены данные рейса (дата: ${params.departureDate || t.departureDate}, время: ${params.departureTime || t.departureTime}).`,
+      });
+    }
+  };
+
+  const archiveTrip = (id: string) => {
+    const t = trips.find((item) => item.id === id);
+    setTrips((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isArchived: true, status: 'cancelled' } : item))
+    );
+    if (t) {
+      logActivity({
+        action: 'archive',
+        entityType: 'trip',
+        entityName: `Рейс ${t.tripNumber} (${t.routeName})`,
+        details: `Рейс переведён в архив.`,
+      });
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -880,6 +1179,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users,
         vehicles,
+        trailers,
         routes,
         trips,
         bookings,
@@ -887,9 +1187,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         passengers,
         accounts,
         transactions,
+        activities,
         getAccountBalance,
         switchUserRole,
         assignVehicleAndDriver,
+        createVehicle,
+        updateVehicle,
+        archiveVehicle,
+        createTrailer,
+        updateTrailer,
+        archiveTrailer,
+        createRoute,
+        updateRoute,
+        archiveRoute,
+        createTrip,
+        updateTrip,
+        archiveTrip,
+        logActivity,
         createRequest,
         assignRequestToTrip,
         updateRequestStatus,

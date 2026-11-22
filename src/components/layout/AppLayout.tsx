@@ -50,7 +50,7 @@ function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: 
         { href: '/',          label: 'Главная панель',      icon: LayoutDashboard },
         { href: '/requests',  label: 'Заявки и пассажиры',  icon: Inbox,
           badge: unassignedRequestsCount > 0 ? `${unassignedRequestsCount}` : undefined },
-        { href: '/trips',     label: 'Маршруты и рейсы',    icon: Navigation,  highlight: true },
+        { href: '/trips',     label: 'Рейсы и маршруты',    icon: Navigation,  highlight: true },
         { href: '/fleet',     label: 'Автопарк',            icon: Bus },
         { href: '/finances',  label: 'Финансы',             icon: Wallet,
           badge: pendingCount > 0 ? `${pendingCount}` : undefined },
