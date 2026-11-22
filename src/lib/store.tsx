@@ -676,15 +676,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTrips((prev) =>
       prev.map((t) => {
         if (t.id !== tripId) return t;
-        const newCheckpoints = t.checkpoints.map((cp) => {
-          if (cp.stopId !== stopId) return cp;
-          const nextIsPassed = !cp.isPassed;
-          return {
-            ...cp,
-            isPassed: nextIsPassed,
-            passedTime: nextIsPassed ? nowStr : undefined,
-          };
+
+        const targetIdx = t.checkpoints.findIndex((cp) => cp.stopId === stopId);
+        if (targetIdx === -1) return t;
+
+        const targetCp = t.checkpoints[targetIdx];
+        const nextIsPassed = !targetCp.isPassed;
+
+        const newCheckpoints = t.checkpoints.map((cp, idx) => {
+          if (nextIsPassed) {
+            // При выборе точки (например, Минск) — эта точка и ВСЕ предыдущие до неё автоматически отмечаются пройденными
+            if (idx <= targetIdx) {
+              return {
+                ...cp,
+                isPassed: true,
+                passedTime: cp.isPassed && cp.passedTime ? cp.passedTime : nowStr,
+              };
+            }
+            return cp;
+          } else {
+            // При снятии отметки с точки — эта точка и ВСЕ последующие за ней сбрасываются в непройденные (белые)
+            if (idx >= targetIdx) {
+              return {
+                ...cp,
+                isPassed: false,
+                passedTime: undefined,
+              };
+            }
+            return cp;
+          }
         });
+
         const passedCount = newCheckpoints.filter((checkpoint) => checkpoint.isPassed).length;
         const status =
           t.status === 'cancelled'

@@ -358,7 +358,9 @@ export default function TripsPage() {
         {activeTrip.checkpoints.length > 0 ? (
           <div className="overflow-x-auto pb-2">
             <div className="relative grid gap-2 pt-1 md:min-w-[640px] md:grid-flow-col md:auto-cols-fr">
+              {/* Gray baseline track (Mobile) */}
               <div aria-hidden="true" className="absolute bottom-3 left-[7px] top-3 w-0.5 bg-slate-200 md:hidden" />
+              {/* Gray baseline track (Desktop) */}
               <div
                 aria-hidden="true"
                 className="absolute left-0 right-0 top-[11px] hidden h-0.5 bg-slate-200 md:block"
@@ -367,21 +369,56 @@ export default function TripsPage() {
                   right: `${50 / activeTrip.checkpoints.length}%`,
                 }}
               />
+
+              {/* Dynamic emerald active track (Desktop) */}
+              {(() => {
+                const lastPassedIdx = activeTrip.checkpoints.reduce((max, cp, i) => (cp.isPassed ? i : max), -1);
+                if (lastPassedIdx <= 0 || activeTrip.checkpoints.length <= 1) return null;
+                const totalSpan = 100 - (100 / activeTrip.checkpoints.length);
+                const filledRatio = lastPassedIdx / (activeTrip.checkpoints.length - 1);
+                return (
+                  <div
+                    aria-hidden="true"
+                    className="absolute top-[11px] hidden h-0.5 bg-emerald-500 transition-all duration-300 md:block"
+                    style={{
+                      left: `${50 / activeTrip.checkpoints.length}%`,
+                      width: `${totalSpan * filledRatio}%`,
+                    }}
+                  />
+                );
+              })()}
+
+              {/* Dynamic emerald active track (Mobile) */}
+              {(() => {
+                const lastPassedIdx = activeTrip.checkpoints.reduce((max, cp, i) => (cp.isPassed ? i : max), -1);
+                if (lastPassedIdx <= 0 || activeTrip.checkpoints.length <= 1) return null;
+                const filledRatio = lastPassedIdx / (activeTrip.checkpoints.length - 1);
+                return (
+                  <div
+                    aria-hidden="true"
+                    className="absolute left-[7px] top-3 w-0.5 bg-emerald-500 transition-all duration-300 md:hidden"
+                    style={{
+                      height: `calc(${filledRatio * 100}% - 12px)`,
+                    }}
+                  />
+                );
+              })()}
+
               {activeTrip.checkpoints.map((checkpoint) => (
                 <button
                   key={checkpoint.stopId}
                   type="button"
                   aria-label={`${checkpoint.stopName}: ${checkpoint.isPassed ? 'пройдена' : 'не пройдена'}`}
                   aria-pressed={checkpoint.isPassed}
-                  title={`${checkpoint.stopName} · ${checkpoint.isPassed ? `пройдена${checkpoint.passedTime ? ` в ${checkpoint.passedTime}` : ''}` : `запланирована на ${checkpoint.scheduledTime}`}`}
+                  title={`${checkpoint.stopName} · ${checkpoint.isPassed ? `пройдена${checkpoint.passedTime ? ` в ${checkpoint.passedTime}` : ''} (нажмите, чтобы сбросить)` : `запланирована на ${checkpoint.scheduledTime} (нажмите, чтобы отметить прохождение)`}`}
                   onClick={() => toggleCheckpoint(activeTrip.id, checkpoint.stopId)}
                   className="group relative z-10 flex min-w-0 items-start gap-3 py-1 text-left md:flex-col md:items-center md:gap-2 md:px-2 md:text-center"
                 >
                   <span
-                    className={`relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors md:mt-0 ${
+                    className={`relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 md:mt-0 ${
                       checkpoint.isPassed
-                        ? 'border-emerald-500 bg-emerald-500'
-                        : 'border-slate-400 bg-white group-hover:border-red-500'
+                        ? 'border-emerald-500 bg-emerald-500 shadow-xs shadow-emerald-500/20'
+                        : 'border-slate-300 bg-white group-hover:border-emerald-400 group-hover:bg-emerald-50/40'
                     }`}
                   >
                     {checkpoint.isPassed && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
