@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Navigation,
@@ -24,6 +24,8 @@ import {
   X,
   Edit,
   Archive,
+  Trash2,
+  ArrowRightLeft,
   History,
   Route as RouteIcon,
   ChevronRight,
@@ -49,6 +51,9 @@ export default function TripsAndRoutesPage() {
     createBookingWithPayment,
     toggleCheckpoint,
     markBookingPaid,
+    cancelBooking,
+    transferBookingToTrip,
+    requests,
     collectCashByDriver,
     setPassengerBoarding,
     currentUser,
@@ -249,7 +254,7 @@ export default function TripsAndRoutesPage() {
 
   const handleArchiveTrip = (trip: Trip, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Переместить рейс ${trip.tripNumber} (${trip.routeName}) в архив?`)) {
+    if (confirm(`Удалить рейс ${trip.tripNumber} (${trip.routeName})?`)) {
       archiveTrip(trip.id);
       if (selectedTripId === trip.id) {
         setSelectedTripId(null);
@@ -321,150 +326,250 @@ export default function TripsAndRoutesPage() {
 
   const handleArchiveRoute = (route: Route, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Переместить маршрут «${route.name}» в архив?`)) {
+    if (confirm(`Удалить маршрут «${route.name}»?`)) {
       archiveRoute(route.id);
     }
   };
 
-  // ════════════════════════════════════════════════════════════════
-  // ACTIVE TRIP DETAILED VIEW (Checkpoints, Seat layout, Passengers)
-  // ════════════════════════════════════════════════════════════════
-  if (activeTrip) {
-    const activeTripBookings = bookings.filter((b) => b.tripId === activeTrip.id);
-    const assignedVehicle = vehicles.find((v) => v.id === activeTrip.vehicleId);
-    const assignedTrailer = trailers.find((t) => t.id === activeTrip.trailerId);
-    const assignedDriver = users.find((u) => u.id === activeTrip.driverId);
-    const totalCapacity = assignedVehicle?.seatsCount || 19;
+  // ACTIVE TRIP DETAILED VIEW DATA
+  const assignedVehicle = activeTrip ? vehicles.find((v) => v.id === activeTrip.vehicleId) : undefined;
+  const assignedTrailer = activeTrip ? trailers.find((t) => t.id === activeTrip.trailerId) : undefined;
+  const assignedDriver = activeTrip ? users.find((u) => u.id === activeTrip.driverId) : undefined;
+  const totalCapacity = assignedVehicle?.seatsCount || 19;
 
-    const handleSeatClick = (seatNumber: number) => {
-      if (isDriver) return;
-      const existing = activeTripBookings.find((b) => b.seatNumber === seatNumber);
-      if (existing) return;
+  // Seamless merge of bookings and assigned requests for this trip
+  const activeTripBookings = useMemo(() => {
+    if (!activeTrip) return [];
+    const direct = bookings.filter((b) => b.tripId === activeTrip.id);
+    const bookedPassengerIds = new Set(direct.map((b) => b.passengerId));
 
-      setSelectedSeat(seatNumber);
-      if (!passengerName) {
-        setPassengerName('Артем Губарев');
-        setPassengerPhone('+7 (999) 700-80-90');
-        setPassengerDoc('4519 123456');
+    const extra: Booking[] = [];
+    const assignedReqs = (requests || []).filter(
+      (r) => r.status === 'assigned' && r.assignedTripId === activeTrip.id
+    );
+
+    assignedReqs.forEach((r) => {
+      const existingP = passengers.find(
+        (p) => p.phone === r.phone || p.fullName === r.passengerName
+      );
+      if (existingP && bookedPassengerIds.has(existingP.id)) return;
+
+      const occupied = new Set([...direct, ...extra].map((b) => b.seatNumber));
+      let seat = r.assignedSeatNumber;
+      if (!seat || occupied.has(seat)) {
+        for (let s = 1; s <= totalCapacity; s++) {
+          if (!occupied.has(s)) {
+            seat = s;
+            break;
+          }
+        }
       }
-      setBookingModalOpen(true);
-    };
+      if (!seat) seat = direct.length + extra.length + 1;
 
-    const handleConfirmBooking = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!selectedSeat || !passengerName.trim() || !passengerPhone.trim()) return;
-
-      const res = createBookingWithPayment({
+      extra.push({
+        id: `synth_book_${r.id}`,
         tripId: activeTrip.id,
-        fullName: passengerName.trim(),
-        phone: passengerPhone.trim(),
-        documentNumber: passengerDoc.trim() || undefined,
-        seatNumber: selectedSeat,
-        fromStop,
-        toStop,
-        price: activeTrip.basePrice,
-        currency: activeTrip.currency,
-        payNow,
-        accountId: selectedAccountId,
+        passengerId: existingP?.id || `synth_pass_${r.id}`,
+        seatNumber: seat,
+        fromStop: r.fromCity,
+        toStop: r.toCity,
+        price: r.priceEstimate || activeTrip.basePrice || 3800,
+        currency: r.currency || activeTrip.currency || 'RUB',
+        status: 'confirmed',
+        paymentMethod: 'cash_driver',
+        boardingStatus: 'waiting',
+        createdAt: r.createdAt || 'Только что',
       });
+    });
 
-      setLastCreatedBooking({
-        bookingId: res.bookingId,
-        passengerId: res.passengerId,
-        seatNumber: selectedSeat,
-        name: passengerName.trim(),
-      });
+    return [...direct, ...extra];
+  }, [activeTrip, bookings, requests, passengers, totalCapacity]);
 
-      setPassengerName('');
-      setPassengerPhone('');
-      setPassengerDoc('');
-      setBookingModalOpen(false);
-    };
+  // Transfer Passenger Modal
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [selectedBookingForTransfer, setSelectedBookingForTransfer] = useState<{
+    bookingId: string;
+    passengerName: string;
+    currentTripNumber: string;
+  } | null>(null);
+  const [transferTargetTripId, setTransferTargetTripId] = useState('');
 
-    const handleSaveAssignment = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!assignedVehicleId || !assignedDriverId) return;
-      assignVehicleAndDriver(activeTrip.id, assignedVehicleId, assignedDriverId);
-      setAssignModalOpen(false);
-    };
+  const openAddPassenger = () => {
+    if (!activeTrip) return;
+    const occupied = new Set(activeTripBookings.map((b) => b.seatNumber));
+    let freeSeat = 1;
+    for (let i = 1; i <= totalCapacity; i++) {
+      if (!occupied.has(i)) {
+        freeSeat = i;
+        break;
+      }
+    }
+    setSelectedSeat(freeSeat);
+    setPassengerName('');
+    setPassengerPhone('');
+    setPassengerDoc('');
+    setFromStop(activeTrip.checkpoints?.[0]?.stopName || 'Москва (Северные Ворота)');
+    setToStop(activeTrip.checkpoints?.[activeTrip.checkpoints.length - 1]?.stopName || 'Минск (Центральный)');
+    setBookingModalOpen(true);
+  };
 
-    return (
-      <div className="space-y-6 animate-in fade-in-50 duration-150">
-        {/* Top bar with Back button and Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  const handleSeatClick = (seatNumber: number) => {
+    if (isDriver || !activeTrip) return;
+    const existing = activeTripBookings.find((b) => b.seatNumber === seatNumber);
+    if (existing) return;
+
+    setSelectedSeat(seatNumber);
+    setPassengerName('');
+    setPassengerPhone('');
+    setPassengerDoc('');
+    setFromStop(activeTrip.checkpoints?.[0]?.stopName || 'Москва (Северные Ворота)');
+    setToStop(activeTrip.checkpoints?.[activeTrip.checkpoints.length - 1]?.stopName || 'Минск (Центральный)');
+    setBookingModalOpen(true);
+  };
+
+  const handleConfirmBooking = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeTrip || !selectedSeat || !passengerName.trim() || !passengerPhone.trim()) return;
+
+    const res = createBookingWithPayment({
+      tripId: activeTrip.id,
+      fullName: passengerName.trim(),
+      phone: passengerPhone.trim(),
+      documentNumber: passengerDoc.trim() || undefined,
+      seatNumber: selectedSeat,
+      fromStop: fromStop || activeTrip.checkpoints?.[0]?.stopName || 'Отправление',
+      toStop: toStop || activeTrip.checkpoints?.[activeTrip.checkpoints.length - 1]?.stopName || 'Прибытие',
+      price: activeTrip.basePrice,
+      currency: activeTrip.currency,
+      payNow,
+      accountId: selectedAccountId,
+    });
+
+    setLastCreatedBooking({
+      bookingId: res.bookingId,
+      passengerId: res.passengerId,
+      seatNumber: selectedSeat,
+      name: passengerName.trim(),
+    });
+
+    setPassengerName('');
+    setPassengerPhone('');
+    setPassengerDoc('');
+    setBookingModalOpen(false);
+  };
+
+  const handleSaveAssignment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeTrip || !assignedVehicleId || !assignedDriverId) return;
+    assignVehicleAndDriver(activeTrip.id, assignedVehicleId, assignedDriverId);
+    setAssignModalOpen(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {activeTrip ? (
+        <div className="space-y-6 animate-in fade-in-50 duration-150">
+        {/* Back Link */}
+        <div>
           <button
             onClick={() => setSelectedTripId(null)}
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-red-600 transition-colors self-start"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Назад ко всем рейсам и маршрутам</span>
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Назад ко всем рейсам</span>
           </button>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => openEditTrip(activeTrip)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-            >
-              <Edit className="w-3.5 h-3.5" />
-              <span>Редактировать рейс</span>
-            </button>
-
-            <button
-              onClick={() => setPrintModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Печать ведомости</span>
-            </button>
-
-            <button
-              onClick={() => handleArchiveTrip(activeTrip)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold shadow-xs transition-colors"
-            >
-              <Archive className="w-3.5 h-3.5" />
-              <span>В архив</span>
-            </button>
-          </div>
         </div>
 
-        {/* TRIP SUMMARY BANNER */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
+        {/* TRIP SUMMARY CARD (with Edit and Archive directly inside) */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-xs font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded">
                   {activeTrip.tripNumber}
                 </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                  {activeTrip.status === 'in_progress' ? 'В пути' : activeTrip.status === 'boarding' ? 'Идёт посадка' : 'Запланирован'}
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
+                    activeTrip.status === 'completed'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : activeTrip.status === 'scheduled'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : activeTrip.status === 'in_progress'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : activeTrip.status === 'boarding'
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {activeTrip.status === 'completed'
+                    ? 'Завершён'
+                    : activeTrip.status === 'scheduled'
+                    ? 'Запланирован'
+                    : activeTrip.status === 'in_progress'
+                    ? 'В пути'
+                    : activeTrip.status === 'boarding'
+                    ? 'Идёт посадка'
+                    : 'Запланирован'}
                 </span>
                 <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
                   {activeTrip.departureDate} · {activeTrip.departureTime}
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-2">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-2 truncate">
                 {activeTrip.routeName}
               </h1>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-100">
+            {/* Actions directly inside the card */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={() => openEditTrip(activeTrip)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition-colors shadow-xs"
+              >
+                <Edit className="w-3.5 h-3.5 text-slate-600" />
+                <span>Редактировать рейс</span>
+              </button>
+
+              <button
+                onClick={() => handleArchiveTrip(activeTrip)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors shadow-xs"
+                title="Удалить рейс"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Удалить</span>
+              </button>
+
+              <button
+                onClick={() => setPrintModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors shadow-xs"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>Печать</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3.5 text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+              <span className="text-slate-400 block text-[10px]">Машина:</span>
+              <span className="font-bold text-slate-900">
+                {assignedVehicle ? `${assignedVehicle.brandModel} (${assignedVehicle.plateNumber})` : 'Не назначена'}
+              </span>
+            </div>
+            {assignedTrailer && (
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-                <span className="text-slate-400 block text-[10px]">Машина:</span>
-                <span className="font-bold text-slate-900">
-                  {assignedVehicle ? `${assignedVehicle.brandModel} (${assignedVehicle.plateNumber})` : 'Не назначена'}
-                </span>
+                <span className="text-slate-400 block text-[10px]">Прицеп:</span>
+                <span className="font-bold text-slate-900">{assignedTrailer.model} ({assignedTrailer.plateNumber})</span>
               </div>
-              {assignedTrailer && (
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-                  <span className="text-slate-400 block text-[10px]">Прицеп:</span>
-                  <span className="font-bold text-slate-900">{assignedTrailer.model} ({assignedTrailer.plateNumber})</span>
-                </div>
-              )}
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-                <span className="text-slate-400 block text-[10px]">Экипаж:</span>
-                <span className="font-bold text-slate-900">{assignedDriver?.name || 'Водитель не назначен'}</span>
-              </div>
+            )}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+              <span className="text-slate-400 block text-[10px]">Экипаж:</span>
+              <span className="font-bold text-slate-900">{assignedDriver?.name || 'Водитель не назначен'}</span>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+              <span className="text-slate-400 block text-[10px]">Тариф:</span>
+              <span className="font-bold text-slate-900">{activeTrip.basePrice} {activeTrip.currency === 'RUB' ? '₽' : activeTrip.currency}</span>
             </div>
           </div>
         </div>
@@ -566,148 +671,310 @@ export default function TripsAndRoutesPage() {
         </section>
 
         {/* TWO-COLUMN LAYOUT: SEAT MAP & PASSENGER MANIFEST */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* SEAT MAP (5 COLS) */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900">Схема рассадки</h2>
-              <span className="text-xs text-slate-500">
-                Занято {activeTripBookings.length} из {totalCapacity} мест
-              </span>
-            </div>
+        {(() => {
+          const resolvePassenger = (b: Booking | undefined) => {
+            if (!b) return null;
+            const reqMatch = (requests || []).find(
+              (r) =>
+                `synth_book_${r.id}` === b.id ||
+                `book_req_${r.id}` === b.id ||
+                (r.status === 'assigned' && r.assignedTripId === activeTrip.id && r.assignedSeatNumber === b.seatNumber)
+            );
+            return (
+              passengers.find((p) => p.id === b.passengerId) || {
+                id: b.passengerId,
+                fullName: reqMatch?.passengerName || 'Пассажир',
+                phone: reqMatch?.phone || '',
+                totalTrips: 1,
+              }
+            );
+          };
 
-            {/* Sprinter Seat grid visual */}
-            <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-3">
-                Передняя часть (водитель)
-              </div>
-              <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-                {Array.from({ length: totalCapacity }, (_, i) => i + 1).map((seatNum) => {
-                  const booking = activeTripBookings.find((b) => b.seatNumber === seatNum);
-                  const passenger = booking ? passengers.find((p) => p.id === booking.passengerId) : null;
-                  const isOccupied = !!booking;
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* SEAT MAP (5 COLS) */}
+              <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900">Схема рассадки</h2>
+                  <span className="text-xs text-slate-500">
+                    Занято {activeTripBookings.length} из {totalCapacity} мест
+                  </span>
+                </div>
 
-                  return (
-                    <button
-                      key={seatNum}
-                      type="button"
-                      disabled={isDriver}
-                      onClick={() => handleSeatClick(seatNum)}
-                      className={`h-11 rounded-xl border flex flex-col items-center justify-center text-xs font-bold transition-all relative ${
-                        isOccupied
-                          ? booking.boardingStatus === 'boarded'
-                            ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                            : 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                          : 'bg-white border-slate-200 text-slate-700 hover:border-red-400 hover:bg-red-50/30'
-                      }`}
-                      title={booking ? `${passenger?.fullName || 'Пассажир'} (${booking.boardingStatus === 'boarded' ? 'Посажен' : 'Ожидает'})` : `Место №${seatNum} свободно`}
-                    >
-                      <span>№ {seatNum}</span>
-                      {booking && (
-                        <span className="text-[9px] font-normal truncate max-w-[50px]">
-                          {passenger?.fullName?.split(' ')[0] || 'Пасс.'}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                {/* BUS VEHICLE BODY CONTAINER */}
+                <div className="relative mx-auto w-full max-w-[340px] rounded-3xl border-2 border-slate-300 bg-slate-100 p-3 shadow-inner sm:p-5">
+                  <div className="w-full h-8 bg-slate-800 rounded-t-2xl mb-4 flex items-center justify-center text-[10px] text-slate-300 font-mono tracking-widest uppercase">
+                    Лобовое стекло
+                  </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500 pt-1">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-white border border-slate-300" />
-                <span>Свободно</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-600" />
-                <span>Занято (билет)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-blue-600" />
-                <span>На борту</span>
-              </div>
-            </div>
-          </div>
-
-          {/* PASSENGERS BOARDING MANIFEST (7 COLS) */}
-          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Посадочная ведомость</h2>
-                <p className="text-xs text-slate-500">Пассажиры рейса {activeTrip.tripNumber}</p>
-              </div>
-
-              {!isDriver && (
-                <button
-                  onClick={() => {
-                    setSelectedSeat(1);
-                    setBookingModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-xs transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Добавить пассажира</span>
-                </button>
-              )}
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {activeTripBookings.map((b) => {
-                const p = passengers.find((item) => item.id === b.passengerId);
-                const isPaid = b.status === 'paid';
-                const isBoarded = b.boardingStatus === 'boarded';
-
-                return (
-                  <div key={b.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 shrink-0">
-                        {p?.fullName.charAt(0) || 'П'}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 truncate">{p?.fullName || 'Пассажир'}</span>
-                          <span className="font-mono text-slate-400 text-[11px]">{p?.phone}</span>
-                          <span className="font-mono font-bold px-1.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
-                            Место {b.seatNumber}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {b.fromStop} → {b.toStop}
-                        </div>
-                      </div>
+                  <div className="flex items-center justify-between px-2 mb-6 text-xs pb-3 border-b border-slate-300">
+                    <div className="flex h-10 min-w-14 items-center justify-center rounded-xl bg-slate-700 px-2 text-center text-[10px] font-bold leading-tight text-white">
+                      Водитель
                     </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                          isPaid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        {isPaid ? 'Оплачено' : 'Оплата водителю'}
-                      </span>
-
-                      <button
-                        onClick={() => setPassengerBoarding(b.id, isBoarded ? 'waiting' : 'boarded')}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                          isBoarded ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {isBoarded ? '✓ На борту' : 'Посадить'}
-                      </button>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                      Входная дверь ↗
                     </div>
                   </div>
-                );
-              })}
 
-              {activeTripBookings.length === 0 && (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  Пассажиров в этом рейсе пока нет. Нажмите «Добавить пассажира» или выберите место на схеме.
+                  {/* SEAT ROWS */}
+                  <div className="space-y-3">
+                    {[
+                      { left: [1], right: [2, 3] },
+                      { left: [4], right: [5, 6] },
+                      { left: [7], right: [8, 9] },
+                      { left: [10], right: [11, 12] },
+                      { left: [13], right: [14, 15] },
+                    ].map((row, rowIdx) => (
+                      <div key={rowIdx} className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          {row.left.map((seatNum) => {
+                            const booking = activeTripBookings.find((b) => b.seatNumber === seatNum);
+                            const passenger = resolvePassenger(booking);
+                            const isBooked = !!booking;
+                            const isBoarded = booking?.boardingStatus === 'boarded';
+
+                            return (
+                              <button
+                                key={seatNum}
+                                type="button"
+                                onClick={() => handleSeatClick(seatNum)}
+                                disabled={isDriver}
+                                className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-bold text-xs transition-all shadow-sm ${
+                                  isBooked
+                                    ? isBoarded
+                                      ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                      : 'bg-emerald-600 text-white'
+                                    : isDriver
+                                    ? 'bg-slate-200 text-slate-400 cursor-default'
+                                    : 'bg-white hover:bg-emerald-50 text-slate-800 border-2 border-slate-300 hover:border-emerald-500 cursor-pointer'
+                                }`}
+                                title={
+                                  booking
+                                    ? `№${seatNum}: ${passenger?.fullName || 'Пассажир'} (${isBoarded ? 'На борту' : 'Занято'})`
+                                    : `Место №${seatNum} свободно`
+                                }
+                              >
+                                <span>№ {seatNum}</span>
+                                <span className="text-[8px] font-normal opacity-90 truncate max-w-[42px]">
+                                  {isBooked ? (passenger?.fullName?.split(' ')[0] || (isBoarded ? 'В салоне' : 'Занято')) : 'Свободно'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="text-[10px] text-slate-400 font-mono tracking-tighter">
+                          | проход |
+                        </div>
+
+                        <div className="flex gap-2">
+                          {row.right.map((seatNum) => {
+                            const booking = activeTripBookings.find((b) => b.seatNumber === seatNum);
+                            const passenger = resolvePassenger(booking);
+                            const isBooked = !!booking;
+                            const isBoarded = booking?.boardingStatus === 'boarded';
+
+                            return (
+                              <button
+                                key={seatNum}
+                                type="button"
+                                onClick={() => handleSeatClick(seatNum)}
+                                disabled={isDriver}
+                                className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-bold text-xs transition-all shadow-sm ${
+                                  isBooked
+                                    ? isBoarded
+                                      ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                      : 'bg-emerald-600 text-white'
+                                    : isDriver
+                                    ? 'bg-slate-200 text-slate-400 cursor-default'
+                                    : 'bg-white hover:bg-emerald-50 text-slate-800 border-2 border-slate-300 hover:border-emerald-500 cursor-pointer'
+                                }`}
+                                title={
+                                  booking
+                                    ? `№${seatNum}: ${passenger?.fullName || 'Пассажир'} (${isBoarded ? 'На борту' : 'Занято'})`
+                                    : `Место №${seatNum} свободно`
+                                }
+                              >
+                                <span>№ {seatNum}</span>
+                                <span className="text-[8px] font-normal opacity-90 truncate max-w-[42px]">
+                                  {isBooked ? (passenger?.fullName?.split(' ')[0] || (isBoarded ? 'В салоне' : 'Занято')) : 'Свободно'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Back Row (4 seats across) */}
+                    <div className="pt-2.5 border-t border-slate-300 flex items-center justify-between gap-1.5">
+                      {[16, 17, 18, 19].map((seatNum) => {
+                        const booking = activeTripBookings.find((b) => b.seatNumber === seatNum);
+                        const passenger = resolvePassenger(booking);
+                        const isBooked = !!booking;
+                        const isBoarded = booking?.boardingStatus === 'boarded';
+
+                        return (
+                          <button
+                            key={seatNum}
+                            type="button"
+                            onClick={() => handleSeatClick(seatNum)}
+                            disabled={isDriver}
+                            className={`flex-1 h-12 rounded-xl flex flex-col items-center justify-center font-bold text-xs transition-all shadow-sm ${
+                              isBooked
+                                ? isBoarded
+                                  ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                                  : 'bg-emerald-600 text-white'
+                                : isDriver
+                                ? 'bg-slate-200 text-slate-400 cursor-default'
+                                : 'bg-white hover:bg-emerald-50 text-slate-800 border-2 border-slate-300 hover:border-emerald-500 cursor-pointer'
+                            }`}
+                            title={
+                              booking
+                                ? `№${seatNum}: ${passenger?.fullName || 'Пассажир'} (${isBoarded ? 'На борту' : 'Занято'})`
+                                : `Место №${seatNum} свободно`
+                            }
+                          >
+                            <span>№ {seatNum}</span>
+                            <span className="text-[8px] font-normal opacity-90 truncate max-w-[42px]">
+                              {isBooked ? (passenger?.fullName?.split(' ')[0] || (isBoarded ? 'В салоне' : 'Занято')) : 'Свободно'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="w-full h-3 bg-slate-300 rounded-b-2xl mt-4" />
                 </div>
-              )}
+
+                {/* Seat Legend */}
+                <div className="flex items-center justify-center gap-4 text-xs pt-2 border-t border-slate-100 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 rounded bg-white border-2 border-slate-300"></div>
+                    <span className="text-slate-600">Свободно</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 rounded bg-emerald-600"></div>
+                    <span className="text-slate-600">Занято (билет)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 rounded bg-blue-600"></div>
+                    <span className="text-slate-600">На борту</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PASSENGERS BOARDING MANIFEST (7 COLS) */}
+              <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Посадочная ведомость</h2>
+                    <p className="text-xs text-slate-500">Пассажиры рейса {activeTrip.tripNumber}</p>
+                  </div>
+
+                  {!isDriver && (
+                    <button
+                      onClick={openAddPassenger}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Добавить пассажира</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {activeTripBookings.map((b) => {
+                    const p = resolvePassenger(b);
+                    const isPaid = b.status === 'paid';
+                    const isBoarded = b.boardingStatus === 'boarded';
+
+                    return (
+                      <div key={b.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 shrink-0">
+                            {p?.fullName?.charAt(0) || 'П'}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 truncate">{p?.fullName || 'Пассажир'}</span>
+                              <span className="font-mono text-slate-400 text-[11px]">{p?.phone}</span>
+                              <span className="font-mono font-bold px-1.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                                Место {b.seatNumber}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              {b.fromStop} → {b.toStop}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                              isPaid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {isPaid ? 'Оплачено' : 'Оплата водителю'}
+                          </span>
+
+                          <button
+                            onClick={() => setPassengerBoarding(b.id, isBoarded ? 'waiting' : 'boarded')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                              isBoarded ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
+                          >
+                            {isBoarded ? '✓ На борту' : 'Посадить'}
+                          </button>
+
+                          {!isDriver && (
+                            <button
+                              onClick={() => {
+                                setSelectedBookingForTransfer({
+                                  bookingId: b.id,
+                                  passengerName: p?.fullName || 'Пассажир',
+                                  currentTripNumber: activeTrip.tripNumber,
+                                });
+                                const otherTrip = activeTrips.find((t) => t.id !== activeTrip.id);
+                                setTransferTargetTripId(otherTrip?.id || '');
+                                setTransferModalOpen(true);
+                              }}
+                              title="Перенести в другой рейс"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {!isDriver && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Удалить пассажира ${p?.fullName || 'Пассажир'} из рейса?`)) {
+                                  cancelBooking(b.id);
+                                }
+                              }}
+                              title="Удалить из рейса"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {activeTripBookings.length === 0 && (
+                    <div className="py-8 text-center text-slate-400 text-xs">
+                      Пассажиров в этом рейсе пока нет. Нажмите «Добавить пассажира» или выберите место на схеме.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* PRINT MANIFEST MODAL */}
         {printModalOpen && (
@@ -750,15 +1017,9 @@ export default function TripsAndRoutesPage() {
           </div>
         )}
       </div>
-    );
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // MAIN VIEW: TABS (РЕЙСЫ vs МАРШРУТЫ)
-  // ════════════════════════════════════════════════════════════════
-  return (
-    <div className="space-y-6">
-      {/* Page Header */}
+    ) : (
+      <div className="space-y-6">
+        {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-red-600 mb-1">
@@ -774,14 +1035,6 @@ export default function TripsAndRoutesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setHistoryModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-          >
-            <History className="w-3.5 h-3.5 text-slate-500" />
-            <span>История изменений</span>
-          </button>
-
           {activeTab === 'trips' ? (
             <button
               onClick={openCreateTrip}
@@ -925,10 +1178,14 @@ export default function TripsAndRoutesPage() {
                 trip.status === 'cancelled' ? 'Отменён' : 'Запланирован';
 
               const statusBadge =
-                trip.status === 'in_progress'
+                trip.status === 'completed'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : trip.status === 'scheduled'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : trip.status === 'in_progress'
                   ? 'bg-blue-50 text-blue-700 border-blue-200'
                   : trip.status === 'boarding'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                   : 'bg-slate-100 text-slate-700 border-slate-200';
 
               return (
@@ -970,10 +1227,10 @@ export default function TripsAndRoutesPage() {
                         </button>
                         <button
                           onClick={(e) => handleArchiveTrip(trip, e)}
-                          title="В архив"
+                          title="Удалить рейс"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                         >
-                          <Archive className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 ml-1">
                           Открыть <ArrowRight className="h-3.5 w-3.5" />
@@ -1072,10 +1329,10 @@ export default function TripsAndRoutesPage() {
                       </button>
                       <button
                         onClick={(e) => handleArchiveRoute(route, e)}
-                        title="В архив"
+                        title="Удалить маршрут"
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                       >
-                        <Archive className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -1130,6 +1387,8 @@ export default function TripsAndRoutesPage() {
             )}
           </div>
         </div>
+      )}
+      </div>
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
@@ -1437,72 +1696,235 @@ export default function TripsAndRoutesPage() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* MODAL: ACTIVITY LOG / ИСТОРИЯ ИЗМЕНЕНИЙ                    */}
+      {/* MODAL: ADD PASSENGER / BOOK SEAT                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {historyModalOpen && (
+      {bookingModalOpen && activeTrip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2 text-slate-900">
-                <History className="w-5 h-5 text-red-600" />
-                <h3 className="font-bold text-slate-900">История изменений и взаимодействия</h3>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-600">
+                <User className="w-5 h-5 shrink-0" />
+                <h3 className="font-bold text-slate-900">
+                  Добавить пассажира (Рейс {activeTrip.tripNumber})
+                </h3>
               </div>
               <button
-                onClick={() => setHistoryModalOpen(false)}
+                onClick={() => setBookingModalOpen(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto divide-y divide-slate-100 space-y-4">
-              <p className="text-xs text-slate-500 mb-2">
-                Полный аудит-лог действий в CRM: создание, редактирование и архивирование рейсов, маршрутов, машин и прицепов с точной датой, временем и автором.
-              </p>
+            <form onSubmit={handleConfirmBooking} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  ФИО пассажира *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={passengerName}
+                  onChange={(e) => setPassengerName(e.target.value)}
+                  placeholder="Иван Кузнецов"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
 
-              {activities.map((act) => (
-                <div key={act.id} className="pt-3 first:pt-0 flex items-start gap-3 text-xs">
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 font-bold ${
-                      act.action === 'create'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : act.action === 'archive'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200'
-                    }`}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Телефон *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={passengerPhone}
+                    onChange={(e) => setPassengerPhone(e.target.value)}
+                    placeholder="+7 (926) 777-11-22"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Место в салоне
+                  </label>
+                  <select
+                    value={selectedSeat || 1}
+                    onChange={(e) => setSelectedSeat(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 font-bold"
                   >
-                    {act.action === 'create' ? '+' : act.action === 'archive' ? '✕' : '✎'}
-                  </div>
+                    {Array.from({ length: totalCapacity }, (_, i) => i + 1).map((s) => {
+                      const occ = activeTripBookings.some((b) => b.seatNumber === s);
+                      return (
+                        <option key={s} value={s} disabled={occ && s !== selectedSeat}>
+                          Место №{s} {occ ? '(Занято)' : '(Свободно)'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <span className="font-bold text-slate-900">{act.entityName}</span>
-                      <span className="text-[11px] text-slate-400 font-mono">{act.timestamp}</span>
-                    </div>
-                    <div className="text-slate-600 mt-0.5">{act.details}</div>
-                    <div className="text-[10px] text-slate-400 mt-1">Автор: {act.actorName}</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Откуда (посадка)
+                  </label>
+                  <select
+                    value={fromStop}
+                    onChange={(e) => setFromStop(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    {activeTrip.checkpoints && activeTrip.checkpoints.length > 0 ? (
+                      activeTrip.checkpoints.map((cp) => (
+                        <option key={cp.stopId} value={cp.stopName}>
+                          {cp.stopName}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="Москва">Москва</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Куда (высадка)
+                  </label>
+                  <select
+                    value={toStop}
+                    onChange={(e) => setToStop(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    {activeTrip.checkpoints && activeTrip.checkpoints.length > 0 ? (
+                      activeTrip.checkpoints.map((cp) => (
+                        <option key={cp.stopId} value={cp.stopName}>
+                          {cp.stopName}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="Минск">Минск</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Тариф билета
+                  </label>
+                  <div className="px-3 py-2 rounded-xl border border-slate-100 bg-slate-50 text-xs font-bold text-slate-900">
+                    {activeTrip.basePrice} {activeTrip.currency === 'RUB' ? '₽' : activeTrip.currency}
                   </div>
                 </div>
-              ))}
 
-              {activities.length === 0 && (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  История изменений пока пуста.
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Оплата
+                  </label>
+                  <select
+                    value={payNow ? 'paid' : 'cash'}
+                    onChange={(e) => setPayNow(e.target.value === 'paid')}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    <option value="paid">Оплачено (касса)</option>
+                    <option value="cash">Оплата водителю</option>
+                  </select>
                 </div>
-              )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setBookingModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-sm transition-colors"
+                >
+                  Записать пассажира
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TRANSFER PASSENGER MODAL */}
+      {transferModalOpen && selectedBookingForTransfer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-600">
+                <ArrowRightLeft className="w-5 h-5 shrink-0" />
+                <h3 className="font-bold text-slate-900">Перенос пассажира в другой рейс</h3>
+              </div>
+              <button
+                onClick={() => setTransferModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="p-4 border-t border-slate-100 flex justify-end shrink-0 bg-slate-50">
-              <button
-                onClick={() => setHistoryModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                Закрыть
-              </button>
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Пассажир</span>
+                <div className="font-bold text-slate-900 text-sm">{selectedBookingForTransfer.passengerName}</div>
+                <div className="text-slate-600">Текущий рейс: <b>{selectedBookingForTransfer.currentTripNumber}</b></div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Выберите новый рейс:
+                </label>
+                <select
+                  value={transferTargetTripId}
+                  onChange={(e) => setTransferTargetTripId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {activeTrips
+                    .filter((t) => t.id !== activeTrip?.id)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.tripNumber} · {t.routeName} ({t.departureDate} {t.departureTime})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setTransferModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!transferTargetTripId) return;
+                    transferBookingToTrip(selectedBookingForTransfer.bookingId, transferTargetTripId);
+                    setTransferModalOpen(false);
+                    setSelectedBookingForTransfer(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm"
+                >
+                  Перенести в рейс
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

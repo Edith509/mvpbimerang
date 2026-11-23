@@ -174,26 +174,26 @@ export default function FinancesPage() {
                     {acc.currency}
                   </span>
                 </div>
-                <div className="text-2xl font-black text-slate-900 mt-2 tracking-tight">
+                <div className="text-2xl font-semibold text-slate-900 mt-2 tracking-tight">
                   {getAccountBalance(acc.id).toLocaleString('ru-RU')} {sym}
                 </div>
               </div>
 
-              {/* Отдельные блоки: Доход и Расход */}
-              <div className="mt-3.5 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5">
-                  <span className="text-[10px] font-semibold text-emerald-800 uppercase tracking-wider block">
-                    Доход
+              {/* Доход и Расход в одну линию */}
+              <div className="mt-3 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Доход:
                   </span>
-                  <span className="font-bold text-emerald-700 text-xs sm:text-sm mt-0.5 block truncate">
+                  <span className="font-bold text-slate-800 text-xs">
                     +{accIncome.toLocaleString('ru-RU')} {sym}
                   </span>
                 </div>
-                <div className="bg-rose-50/70 border border-rose-100 rounded-xl p-2.5">
-                  <span className="text-[10px] font-semibold text-rose-800 uppercase tracking-wider block">
-                    Расход
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Расход:
                   </span>
-                  <span className="font-bold text-rose-700 text-xs sm:text-sm mt-0.5 block truncate">
+                  <span className="font-bold text-slate-800 text-xs">
                     −{accExpense.toLocaleString('ru-RU')} {sym}
                   </span>
                 </div>

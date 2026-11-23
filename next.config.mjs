@@ -11,6 +11,10 @@ const nextConfig = {
     'ngrok-free.app',
     '*.ngrok.app',
     '*.ngrok-free.dev',
+    '*.trycloudflare.com',
+    'trycloudflare.com',
+    '*.lhr.life',
+    '*.loca.lt',
   ],
 };
 

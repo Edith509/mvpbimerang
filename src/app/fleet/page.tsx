@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,6 +21,7 @@ import {
   Check,
   Edit,
   Archive,
+  Trash2,
   History,
   Truck,
   Box,
@@ -121,17 +122,26 @@ export default function FleetPage() {
   const [trlStatus, setTrlStatus] = useState<VehicleStatus>('ready');
   const [trlAssignedVehicleId, setTrlAssignedVehicleId] = useState('');
 
-  const isDriver = currentUser.role === 'driver';
+  const isDriver = currentUser?.role === 'driver';
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const safeVehicles = vehicles || [];
+  const safeTrailers = trailers || [];
+  const safeActivities = activities || [];
 
   // 1. FILTERED VEHICLES (excluding archived)
-  const activeVehicles = vehicles.filter((v) => !v.isArchived);
+  const activeVehicles = safeVehicles.filter((v) => !v.isArchived);
   const filteredVehicles = activeVehicles.filter((v) => {
     if (isDriver && v.id !== 'veh_12') return false;
     if (vehicleStatusFilter !== 'all' && v.status !== vehicleStatusFilter) return false;
     if (vehicleSearchQuery.trim()) {
       const q = vehicleSearchQuery.toLowerCase();
-      const matchPlate = v.plateNumber.toLowerCase().includes(q);
-      const matchModel = v.brandModel.toLowerCase().includes(q);
+      const matchPlate = v.plateNumber?.toLowerCase().includes(q);
+      const matchModel = v.brandModel?.toLowerCase().includes(q);
       const matchLoc = (v.currentLocation || '').toLowerCase().includes(q);
       const matchBase = (v.baseCity || '').toLowerCase().includes(q);
       const matchGarage = (v.garageNumber || '').toLowerCase().includes(q);
@@ -141,13 +151,13 @@ export default function FleetPage() {
   });
 
   // 2. FILTERED TRAILERS (excluding archived)
-  const activeTrailers = trailers.filter((t) => !t.isArchived);
+  const activeTrailers = safeTrailers.filter((t) => !t.isArchived);
   const filteredTrailers = activeTrailers.filter((t) => {
     if (trailerStatusFilter !== 'all' && t.status !== trailerStatusFilter) return false;
     if (trailerSearchQuery.trim()) {
       const q = trailerSearchQuery.toLowerCase();
-      const matchPlate = t.plateNumber.toLowerCase().includes(q);
-      const matchModel = t.model.toLowerCase().includes(q);
+      const matchPlate = t.plateNumber?.toLowerCase().includes(q);
+      const matchModel = t.model?.toLowerCase().includes(q);
       const matchLoc = (t.currentLocation || '').toLowerCase().includes(q);
       const matchBase = (t.baseCity || '').toLowerCase().includes(q);
       const matchGarage = (t.garageNumber || '').toLowerCase().includes(q);
@@ -246,7 +256,7 @@ export default function FleetPage() {
 
   const handleArchiveVehicle = (v: Vehicle, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Переместить машину ${v.brandModel} (${v.plateNumber}) в архив?`)) {
+    if (confirm(`Удалить машину ${v.brandModel} (${v.plateNumber})?`)) {
       archiveVehicle(v.id);
     }
   };
@@ -323,7 +333,7 @@ export default function FleetPage() {
 
   const handleArchiveTrailer = (t: Trailer, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Переместить прицеп ${t.model} (${t.plateNumber}) в архив?`)) {
+    if (confirm(`Удалить прицеп ${t.model} (${t.plateNumber})?`)) {
       archiveTrailer(t.id);
     }
   };
@@ -342,14 +352,6 @@ export default function FleetPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setHistoryModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-          >
-            <History className="w-3.5 h-3.5 text-slate-500" />
-            <span>История изменений</span>
-          </button>
-
           <button
             onClick={() => {
               setSelectedVehicleForDefect(vehicles[0]?.id || '');
@@ -638,10 +640,10 @@ export default function FleetPage() {
                             </button>
                             <button
                               onClick={(e) => handleArchiveVehicle(vehicle, e)}
-                              title="Переместить в архив"
+                              title="Удалить"
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                             >
-                              <Archive className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                             <Link
                               href={`/fleet/${vehicle.id}`}
@@ -863,10 +865,10 @@ export default function FleetPage() {
                             </button>
                             <button
                               onClick={(e) => handleArchiveTrailer(trailer, e)}
-                              title="Переместить прицеп в архив"
+                              title="Удалить прицеп"
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                             >
-                              <Archive className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1171,7 +1173,7 @@ export default function FleetPage() {
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
                   <option value="">Не прицеплен (автономно на базе)</option>
-                  {vehicles.map((v) => (
+                  {safeVehicles.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.brandModel} ({v.plateNumber})
                     </option>
@@ -1195,74 +1197,6 @@ export default function FleetPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* MODAL: ACTIVITY LOG / ИСТОРИЯ ИЗМЕНЕНИЙ                    */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {historyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2 text-slate-900">
-                <History className="w-5 h-5 text-red-600" />
-                <h3 className="font-bold text-slate-900">История изменений и взаимодействия</h3>
-              </div>
-              <button
-                onClick={() => setHistoryModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto divide-y divide-slate-100 space-y-4">
-              <p className="text-xs text-slate-500 mb-2">
-                Полный аудит-лог действий в CRM: создание, редактирование и архивирование машин, прицепов, рейсов и статусов с точным временем и автором.
-              </p>
-
-              {activities.map((act) => (
-                <div key={act.id} className="pt-3 first:pt-0 flex items-start gap-3 text-xs">
-                  <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 font-bold ${
-                      act.action === 'create'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : act.action === 'archive'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200'
-                    }`}
-                  >
-                    {act.action === 'create' ? '+' : act.action === 'archive' ? '✕' : '✎'}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <span className="font-bold text-slate-900">{act.entityName}</span>
-                      <span className="text-[11px] text-slate-400 font-mono">{act.timestamp}</span>
-                    </div>
-                    <div className="text-slate-600 mt-0.5">{act.details}</div>
-                    <div className="text-[10px] text-slate-400 mt-1">Автор: {act.actorName}</div>
-                  </div>
-                </div>
-              ))}
-
-              {activities.length === 0 && (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  История изменений пока пуста.
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-slate-100 flex justify-end shrink-0 bg-slate-50">
-              <button
-                onClick={() => setHistoryModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                Закрыть
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1296,7 +1230,7 @@ export default function FleetPage() {
                   onChange={(e) => setSelectedVehicleForDefect(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
-                  {vehicles.map((v) => (
+                  {safeVehicles.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.brandModel} ({v.plateNumber})
                     </option>

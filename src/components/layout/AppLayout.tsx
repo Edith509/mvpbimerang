@@ -18,6 +18,7 @@ import {
   FileBarChart,
   Sparkles,
   Inbox,
+  History,
 } from 'lucide-react';
 import { useApp } from '@/lib/store';
 import { Role } from '@/types';
@@ -54,6 +55,7 @@ function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: 
         { href: '/fleet',     label: 'Автопарк',            icon: Bus },
         { href: '/finances',  label: 'Финансы',             icon: Wallet,
           badge: pendingCount > 0 ? `${pendingCount}` : undefined },
+        { href: '/history',   label: 'История действий',    icon: History },
         { href: '/reports',   label: 'Отчётность',          icon: FileBarChart },
         { href: '/customers', label: 'База клиентов',       icon: Users },
         { href: '/team',      label: 'Команда и права',     icon: ShieldCheck },
@@ -91,6 +93,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     '/trips': 'Рейсы',
     '/fleet': 'Автопарк',
     '/finances': 'Финансы',
+    '/history': 'История',
     '/reports': 'Отчёты',
     '/customers': 'Клиенты',
     '/team': 'Команда',

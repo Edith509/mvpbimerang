@@ -86,6 +86,7 @@ interface AppContextType {
     source?: 'telegram' | 'website' | 'phone' | 'dispatcher';
   }) => string;
   assignRequestToTrip: (requestId: string, tripId: string, seatNumber?: number) => void;
+  transferBookingToTrip: (bookingId: string, targetTripId: string, targetSeatNumber?: number) => void;
   updateRequestStatus: (requestId: string, status: RequestStatus) => void;
   deleteRequest: (requestId: string) => void;
   createBookingWithPayment: (params: {
@@ -102,6 +103,7 @@ interface AppContextType {
     accountId?: string;
   }) => { bookingId: string; passengerId: string };
   markBookingPaid: (bookingId: string, accountId: string, paymentMethod: string) => void;
+  cancelBooking: (bookingId: string) => void;
   collectCashByDriver: (bookingId: string) => void;
   setPassengerBoarding: (bookingId: string, status: BoardingStatus) => void;
   addIncident: (vehicleId: string, description: string, reportedBy?: string) => void;
@@ -261,6 +263,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoaded(true);
     }
   }, []);
+
+  // Auto-sync assigned requests with bookings and passengers
+  useEffect(() => {
+    if (!isLoaded) return;
+    const assignedReqs = requests.filter((r) => r.status === 'assigned' && r.assignedTripId);
+    if (!assignedReqs.length) return;
+
+    let needUpdateBookings = false;
+    let needUpdatePassengers = false;
+    const newBookings = [...bookings];
+    const newPassengers = [...passengers];
+
+    assignedReqs.forEach((req) => {
+      let pass = newPassengers.find((p) => p.phone === req.phone || p.fullName === req.passengerName);
+      if (!pass) {
+        pass = {
+          id: `pass_req_${req.id}`,
+          fullName: req.passengerName,
+          phone: req.phone,
+          totalTrips: 1,
+          notes: req.notes,
+        };
+        newPassengers.push(pass);
+        needUpdatePassengers = true;
+      }
+
+      const hasBooking = newBookings.some(
+        (b) => b.tripId === req.assignedTripId && (b.passengerId === pass!.id || b.id === `book_req_${req.id}`)
+      );
+
+      if (!hasBooking) {
+        const tripBookings = newBookings.filter((b) => b.tripId === req.assignedTripId);
+        const occupied = new Set(tripBookings.map((b) => b.seatNumber));
+        let seat = req.assignedSeatNumber;
+        if (!seat || occupied.has(seat)) {
+          for (let s = 1; s <= 19; s++) {
+            if (!occupied.has(s)) {
+              seat = s;
+              break;
+            }
+          }
+        }
+        if (!seat) seat = tripBookings.length + 1;
+
+        newBookings.push({
+          id: `book_req_${req.id}`,
+          tripId: req.assignedTripId!,
+          passengerId: pass.id,
+          seatNumber: seat,
+          fromStop: req.fromCity,
+          toStop: req.toCity,
+          price: req.priceEstimate || 3800,
+          currency: req.currency || 'RUB',
+          status: 'confirmed',
+          paymentMethod: 'cash_driver',
+          boardingStatus: 'waiting',
+          createdAt: req.createdAt || 'Только что',
+        });
+        needUpdateBookings = true;
+      }
+    });
+
+    if (needUpdatePassengers) setPassengers(newPassengers);
+    if (needUpdateBookings) setBookings(newBookings);
+  }, [isLoaded, requests]);
 
   // Save to localStorage
   useEffect(() => {
@@ -512,6 +579,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookings((prev) =>
       prev.map((b) => (b.id === bookingId ? { ...b, boardingStatus: status } : b))
     );
+  };
+
+  const cancelBooking = (bookingId: string) => {
+    const booking = bookings.find((b) => b.id === bookingId);
+    if (!booking) return;
+
+    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+
+    const passenger = passengers.find((p) => p.id === booking.passengerId);
+    if (passenger) {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.assignedTripId === booking.tripId &&
+          (r.phone === passenger.phone || r.passengerName === passenger.fullName)
+            ? {
+                ...r,
+                status: 'new',
+                assignedTripId: undefined,
+                assignedTripNumber: undefined,
+                assignedSeatNumber: undefined,
+              }
+            : r
+        )
+      );
+    }
   };
 
   const addIncident = (vehicleId: string, description: string, reportedBy?: string) => {
@@ -881,6 +973,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const assignRequestToTrip = (requestId: string, tripId: string, seatNumber?: number) => {
     const trip = trips.find((t) => t.id === tripId);
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    // Pick a seat
+    const tripBookings = bookings.filter((b) => b.tripId === tripId);
+    const occupiedSeats = new Set(tripBookings.map((b) => b.seatNumber));
+    const veh = vehicles.find((v) => v.id === trip?.vehicleId);
+    const maxCapacity = veh?.seatsCount || 19;
+
+    let assignedSeat = seatNumber;
+    if (!assignedSeat || occupiedSeats.has(assignedSeat)) {
+      for (let i = 1; i <= maxCapacity; i++) {
+        if (!occupiedSeats.has(i)) {
+          assignedSeat = i;
+          break;
+        }
+      }
+    }
+    if (!assignedSeat) assignedSeat = tripBookings.length + 1;
+
+    // Create real passenger record
+    const passengerId = `pass_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const newPassenger: Passenger = {
+      id: passengerId,
+      fullName: req.passengerName,
+      phone: req.phone,
+      totalTrips: 1,
+      notes: req.notes,
+    };
+    setPassengers((prev) => [newPassenger, ...prev]);
+
+    // Create real booking record
+    const bookingId = `book_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const newBooking: Booking = {
+      id: bookingId,
+      tripId: tripId,
+      passengerId: passengerId,
+      seatNumber: assignedSeat,
+      fromStop: req.fromCity,
+      toStop: req.toCity,
+      price: req.priceEstimate || trip?.basePrice || 2500,
+      currency: req.currency || trip?.currency || 'RUB',
+      status: 'confirmed',
+      paymentMethod: 'cash_driver',
+      boardingStatus: 'waiting',
+      createdAt: 'Только что',
+    };
+    setBookings((prev) => [newBooking, ...prev]);
+
+    // Update request
     setRequests((prev) =>
       prev.map((r) =>
         r.id === requestId
@@ -889,11 +1031,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: 'assigned',
               assignedTripId: tripId,
               assignedTripNumber: trip?.tripNumber || tripId,
-              assignedSeatNumber: seatNumber,
+              assignedSeatNumber: assignedSeat,
             }
           : r
       )
     );
+
+    logActivity({
+      action: 'create',
+      entityType: 'booking',
+      entityName: `${req.passengerName} (Место №${assignedSeat})`,
+      details: `Пассажир из заявки ${req.requestNumber} назначен в рейс ${trip?.tripNumber || tripId}.`,
+    });
+  };
+
+  const transferBookingToTrip = (bookingId: string, targetTripId: string, targetSeatNumber?: number) => {
+    const booking = bookings.find((b) => b.id === bookingId);
+    const targetTrip = trips.find((t) => t.id === targetTripId);
+    if (!booking || !targetTrip) return;
+
+    const oldTrip = trips.find((t) => t.id === booking.tripId);
+
+    // Pick seat on target trip
+    const targetBookings = bookings.filter((b) => b.tripId === targetTripId && b.id !== bookingId);
+    const occupiedSeats = new Set(targetBookings.map((b) => b.seatNumber));
+    const veh = vehicles.find((v) => v.id === targetTrip.vehicleId);
+    const maxCapacity = veh?.seatsCount || 19;
+
+    let newSeat = targetSeatNumber;
+    if (!newSeat || occupiedSeats.has(newSeat)) {
+      for (let i = 1; i <= maxCapacity; i++) {
+        if (!occupiedSeats.has(i)) {
+          newSeat = i;
+          break;
+        }
+      }
+    }
+    if (!newSeat) newSeat = targetBookings.length + 1;
+
+    // Update booking
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? {
+              ...b,
+              tripId: targetTripId,
+              seatNumber: newSeat,
+            }
+          : b
+      )
+    );
+
+    // Update passenger request if linked
+    const passenger = passengers.find((p) => p.id === booking.passengerId);
+    if (passenger) {
+      setRequests((prev) =>
+        prev.map((r) =>
+          (r.assignedTripId === booking.tripId || r.phone === passenger.phone || r.passengerName === passenger.fullName) &&
+          r.status === 'assigned'
+            ? {
+                ...r,
+                assignedTripId: targetTripId,
+                assignedTripNumber: targetTrip.tripNumber,
+                assignedSeatNumber: newSeat,
+              }
+            : r
+        )
+      );
+    }
+
+    logActivity({
+      action: 'update',
+      entityType: 'booking',
+      entityName: `${passenger?.fullName || 'Пассажир'} (Место №${newSeat})`,
+      details: `Пассажир перенесён из рейса ${oldTrip?.tripNumber || booking.tripId} в рейс ${targetTrip.tripNumber}.`,
+    });
   };
 
   const updateRequestStatus = (requestId: string, status: RequestStatus) => {
@@ -983,15 +1195,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const archiveVehicle = (id: string) => {
     const v = vehicles.find((item) => item.id === id);
-    setVehicles((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
-    );
+    setVehicles((prev) => prev.filter((item) => item.id !== id));
     if (v) {
       logActivity({
         action: 'archive',
         entityType: 'vehicle',
         entityName: `${v.brandModel} (${v.plateNumber})`,
-        details: `Машина отправлена в архив автопарка.`,
+        details: `Машина полностью удалена из автопарка.`,
       });
     }
   };
@@ -1038,15 +1248,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const archiveTrailer = (id: string) => {
     const t = trailers.find((item) => item.id === id);
-    setTrailers((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
-    );
+    setTrailers((prev) => prev.filter((item) => item.id !== id));
     if (t) {
       logActivity({
         action: 'archive',
         entityType: 'trailer',
         entityName: `Прицеп ${t.model} (${t.plateNumber})`,
-        details: `Прицеп отправлен в архив автопарка.`,
+        details: `Прицеп полностью удалён из автопарка.`,
       });
     }
   };
@@ -1090,15 +1298,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const archiveRoute = (id: string) => {
     const r = routes.find((item) => item.id === id);
-    setRoutes((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isArchived: true } : item))
-    );
+    setRoutes((prev) => prev.filter((item) => item.id !== id));
     if (r) {
       logActivity({
         action: 'archive',
         entityType: 'route',
         entityName: `Маршрут «${r.name}»`,
-        details: `Маршрут переведён в архив.`,
+        details: `Маршрут полностью удалён из системы.`,
       });
     }
   };
@@ -1159,15 +1365,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const archiveTrip = (id: string) => {
     const t = trips.find((item) => item.id === id);
-    setTrips((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isArchived: true, status: 'cancelled' } : item))
+    setTrips((prev) => prev.filter((item) => item.id !== id));
+    setBookings((prev) => prev.filter((b) => b.tripId !== id));
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.assignedTripId === id
+          ? {
+              ...r,
+              status: 'new',
+              assignedTripId: undefined,
+              assignedTripNumber: undefined,
+              assignedSeatNumber: undefined,
+            }
+          : r
+      )
     );
     if (t) {
       logActivity({
         action: 'archive',
         entityType: 'trip',
         entityName: `Рейс ${t.tripNumber} (${t.routeName})`,
-        details: `Рейс переведён в архив.`,
+        details: `Рейс полностью удалён из системы.`,
       });
     }
   };
@@ -1206,10 +1424,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logActivity,
         createRequest,
         assignRequestToTrip,
+        transferBookingToTrip,
         updateRequestStatus,
         deleteRequest,
         createBookingWithPayment,
         markBookingPaid,
+        cancelBooking,
         collectCashByDriver,
         setPassengerBoarding,
         addIncident,
