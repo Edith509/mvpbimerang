@@ -1,5 +1,31 @@
 export type Role = 'admin' | 'logist' | 'driver' | 'mechanic' | 'accountant';
 
+export type DocumentCategory =
+  | 'receipts'          // Чеки и квитанции
+  | 'driver_licenses'   // Водительские удостоверения
+  | 'passports'         // Паспорта
+  | 'warranty'          // Гарантийные документы
+  | 'contracts'         // Договоры
+  | 'insurance'         // Страховые документы
+  | 'other';            // Прочие документы
+
+export interface StoredDocument {
+  id: string;
+  title: string;
+  category: DocumentCategory;
+  categoryLabel: string;
+  fileName: string;
+  fileSize: string;
+  fileSizeBytes: number;
+  fileType: 'pdf' | 'word' | 'image';
+  fileExtension: string;
+  mimeType: string;
+  dataUrl?: string;
+  description?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
 export interface DocumentAttachment {
   id: string;
   title: string;
@@ -126,7 +152,7 @@ export interface ActivityLogItem {
   timestamp: string;
   actorName: string;
   action: 'create' | 'update' | 'archive' | 'status_change';
-  entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+  entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request' | 'document';
   entityName: string;
   details: string;
 }

@@ -128,44 +128,46 @@ export default function VehicleDetailPage() {
     <div className="space-y-6">
       {/* ── BREADCRUMBS & TOP BAR ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Link href="/fleet" className="hover:text-red-600 transition-colors flex items-center gap-1 font-medium">
+        <div className="flex items-center gap-2 text-xs text-slate-500 min-w-0">
+          <Link href="/fleet" className="hover:text-red-600 transition-colors flex items-center gap-1 font-medium shrink-0">
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Автопарк</span>
           </Link>
           <span className="text-slate-300">/</span>
-          <span className="text-slate-900 font-semibold truncate max-w-[240px]">
+          <span className="text-slate-900 font-semibold truncate max-w-[200px] sm:max-w-[340px]">
             {vehicle.brandModel} ({vehicle.plateNumber})
           </span>
         </div>
 
-        {/* Action buttons (No spare parts button!) */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Action buttons */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           {isDriver && (
             <button
               onClick={() => setFuelModalOpen(true)}
-              className="btn-primary px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+              className="btn-primary px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5"
             >
               <Fuel className="w-3.5 h-3.5" />
-              <span>Чек за заправку</span>
+              <span>Чек заправки</span>
             </button>
           )}
 
           <button
             onClick={() => setIncidentModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
+            className="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 text-center cursor-pointer"
           >
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-            <span>Зафиксировать неисправность</span>
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="sm:hidden">Поломка</span>
+            <span className="hidden sm:inline">Зафиксировать неисправность</span>
           </button>
 
           {!isDriver && (
             <button
               onClick={() => setDocModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 text-center cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-slate-500" />
-              <span>Загрузить документ</span>
+              <Plus className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="sm:hidden">Документ</span>
+              <span className="hidden sm:inline">Загрузить документ</span>
             </button>
           )}
         </div>
@@ -305,43 +307,45 @@ export default function VehicleDetailPage() {
             </div>
 
             {/* Quick condition summary bar */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs flex-wrap gap-2">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                  <FileCheck className="w-4 h-4 text-emerald-600" />
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 min-w-0">
+                <span className="flex items-center gap-1.5 font-medium text-slate-700 whitespace-nowrap">
+                  <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                   Комплектация: <b>{(vehicle.equipment || []).length - missingEquipmentCount}/{(vehicle.equipment || []).length}</b>
                 </span>
-                <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                  <FileText className="w-4 h-4 text-blue-600" />
+                <span className="flex items-center gap-1.5 font-medium text-slate-700 whitespace-nowrap">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
                   Документы: <b>{(vehicle.documents || []).length} загружено</b>
                 </span>
               </div>
 
-              {openIncidentsCount > 0 ? (
-                <span className="font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md text-[11px] flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Неисправностей: {openIncidentsCount}
-                </span>
-              ) : (
-                <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md text-[11px] flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" />
-                  Без замечаний
-                </span>
-              )}
+              <div className="self-start sm:self-auto shrink-0 pt-0.5 sm:pt-0">
+                {openIncidentsCount > 0 ? (
+                  <span className="font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 whitespace-nowrap">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    Неисправностей: {openIncidentsCount}
+                  </span>
+                ) : (
+                  <span className="font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 whitespace-nowrap">
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    Без замечаний
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── TABS: ЧЕК-ЛИСТ / ДОКУМЕНТЫ / ИСТОРИЯ ТО / ДЕФЕКТЫ ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-3.5 sm:p-6 space-y-4 sm:space-y-6">
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1.5 border-b border-slate-200 pb-3 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-1.5 border-b border-slate-200 pb-3 overflow-x-auto scrollbar-none -mx-3.5 px-3.5 sm:mx-0 sm:px-0">
           {[
-            { id: 'equipment', label: `Чек-лист оснащения (${(vehicle.equipment || []).length})`, icon: FileCheck },
-            { id: 'documents', label: `Документы машины (${(vehicle.documents || []).length})`, icon: FileText },
-            { id: 'service', label: `История ТО и СТО (${(vehicle.serviceRecords || []).length})`, icon: Wrench },
-            { id: 'defects', label: `Поломки и дефекты (${(vehicle.incidents || []).length})`, icon: AlertTriangle },
+            { id: 'equipment', label: `Чек-лист (${(vehicle.equipment || []).length})`, fullLabel: `Чек-лист оснащения (${(vehicle.equipment || []).length})`, icon: FileCheck },
+            { id: 'documents', label: `Документы (${(vehicle.documents || []).length})`, fullLabel: `Документы машины (${(vehicle.documents || []).length})`, icon: FileText },
+            { id: 'service', label: `История ТО (${(vehicle.serviceRecords || []).length})`, fullLabel: `История ТО и СТО (${(vehicle.serviceRecords || []).length})`, icon: Wrench },
+            { id: 'defects', label: `Поломки (${(vehicle.incidents || []).length})`, fullLabel: `Поломки и дефекты (${(vehicle.incidents || []).length})`, icon: AlertTriangle },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -349,14 +353,15 @@ export default function VehicleDetailPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                   isActive
                     ? 'bg-red-600 text-white shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/70'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="sm:hidden">{tab.label}</span>
+                <span className="hidden sm:inline">{tab.fullLabel}</span>
               </button>
             );
           })}
@@ -365,11 +370,11 @@ export default function VehicleDetailPage() {
         {/* ── TAB 1: EQUIPMENT CHECKLIST ── */}
         {activeTab === 'equipment' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500">
+            <div className="flex items-center justify-between text-xs gap-2">
+              <span className="text-slate-500 text-[11px] sm:text-xs">
                 Обязательная комплектация перед выездом в рейс:
               </span>
-              <span className={`font-bold ${missingEquipmentCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              <span className={`font-bold whitespace-nowrap text-[11px] sm:text-xs ${missingEquipmentCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                 {missingEquipmentCount > 0 ? `Не хватает: ${missingEquipmentCount} предм.` : 'Всё в наличии (8/8)'}
               </span>
             </div>
@@ -380,23 +385,23 @@ export default function VehicleDetailPage() {
                 return (
                   <div
                     key={eq.id}
-                    className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-2.5 text-xs transition-colors ${
                       isPresent ? 'bg-slate-50/60 border-slate-200' : 'bg-amber-50/70 border-amber-200'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div
-                        className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                           isPresent ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                         }`}
                       >
-                        {isPresent ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                        {isPresent ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                       </div>
-                      <div className="min-w-0">
-                        <p className={`font-semibold truncate ${isPresent ? 'text-slate-800' : 'text-amber-900'}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-semibold text-xs leading-snug break-words ${isPresent ? 'text-slate-800' : 'text-amber-900'}`}>
                           {eq.name}
                         </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate">
                           {eq.checkedAt} · {eq.checkedBy}
                         </p>
                       </div>
@@ -404,13 +409,14 @@ export default function VehicleDetailPage() {
 
                     <button
                       onClick={() => toggleEquipmentItem(vehicle.id, eq.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 ${
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                         isPresent
-                          ? 'text-slate-500 hover:text-red-600 hover:bg-red-50'
-                          : 'bg-emerald-600 text-white shadow-2xs'
+                          ? 'text-slate-500 hover:text-red-600 hover:bg-red-50 active:bg-red-100'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
                       }`}
                     >
-                      {isPresent ? 'Отметить отсутствие' : 'Отметить наличие'}
+                      <span className="sm:hidden">{isPresent ? 'Снять' : 'В наличии'}</span>
+                      <span className="hidden sm:inline">{isPresent ? 'Отметить отсутствие' : 'Отметить наличие'}</span>
                     </button>
                   </div>
                 );
@@ -422,20 +428,20 @@ export default function VehicleDetailPage() {
         {/* ── TAB 2: VEHICLE DOCUMENTS ── */}
         {activeTab === 'documents' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
               <span className="text-slate-500">
                 Паспорта ТС, страховки и диагностические карты:
               </span>
               <button
                 onClick={() => setDocModalOpen(true)}
-                className="btn-primary px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+                className="btn-primary px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Добавить документ</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
               {(vehicle.documents || []).map((doc) => (
                 <div
                   key={doc.id}
@@ -528,13 +534,13 @@ export default function VehicleDetailPage() {
         {/* ── TAB 4: DEFECTS & INCIDENTS ── */}
         {activeTab === 'defects' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
               <span className="text-slate-500">
                 Зафиксированные дефекты и неисправности:
               </span>
               <button
                 onClick={() => setIncidentModalOpen(true)}
-                className="btn-primary px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+                className="btn-primary px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Зафиксировать поломку</span>

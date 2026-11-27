@@ -118,6 +118,34 @@ textarea:focus-visible {
   background: #94a3b8;
 }
 
+/* Category scrollbar */
+.category-scrollbar::-webkit-scrollbar {
+  height: 5px;
+}
+
+.category-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+
+.category-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.category-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Hide Next.js development badge / indicator */
+nextjs-portal,
+[data-nextjs-dev-indicator],
+[data-next-badge],
+div[data-nextjs-toast-wrapper],
+div[data-nextjs-dialog-overlay] + div {
+  display: none !important;
+}
+
 /* Animations */
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }

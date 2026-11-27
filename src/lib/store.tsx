@@ -19,6 +19,8 @@ import {
   RequestStatus,
   ActivityLogItem,
   TripCheckpoint,
+  StoredDocument,
+  DocumentCategory,
 } from '@/types';
 import {
   INITIAL_COMPANY,
@@ -33,6 +35,7 @@ import {
   INITIAL_TRANSACTIONS,
   INITIAL_REQUESTS,
   INITIAL_ACTIVITIES,
+  INITIAL_DOCUMENTS,
 } from './mockData';
 
 interface AppContextType {
@@ -66,7 +69,7 @@ interface AppContextType {
   archiveTrip: (id: string) => void;
   logActivity: (params: {
     action: 'create' | 'update' | 'archive' | 'status_change';
-    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request' | 'document';
     entityName: string;
     details: string;
   }) => void;
@@ -130,6 +133,10 @@ interface AppContextType {
   toggleCheckpoint: (tripId: string, stopId: string) => void;
   executeAIPrompt: (prompt: string) => { success: boolean; message: string; action?: string };
   resetToDemo: () => void;
+  documents: StoredDocument[];
+  addDocument: (doc: Omit<StoredDocument, 'id' | 'uploadedAt'>) => string;
+  updateDocument: (id: string, params: Partial<StoredDocument>) => void;
+  deleteDocument: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -207,6 +214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [accounts, setAccounts] = useState<FinanceAccount[]>(INITIAL_ACCOUNTS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [activities, setActivities] = useState<ActivityLogItem[]>(INITIAL_ACTIVITIES);
+  const [documents, setDocuments] = useState<StoredDocument[]>(INITIAL_DOCUMENTS);
 
   const getAccountBalance = (accountId: string) =>
     calculateAccountBalance(transactions, accountId);
@@ -244,6 +252,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (parsed.trips) setTrips(parsed.trips);
         if (parsed.bookings) setBookings(parsed.bookings);
         if (Array.isArray(parsed.requests)) setRequests(parsed.requests);
+        if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
         if (Array.isArray(parsed.passengers)) {
           setPassengers(
             parsed.passengers.map((passenger: Passenger & { lostItems?: unknown }) => {
@@ -347,6 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         accounts,
         transactions,
         activities,
+        documents,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -367,6 +377,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     accounts,
     transactions,
     activities,
+    documents,
   ]);
 
   const switchUserRole = (role: Role) => {
@@ -770,6 +781,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setTransactions((prev) => [newTx, ...prev]);
+
+    // Automatically synchronize receipt/invoice to Documents archive
+    if (receiptAttachment) {
+      const ext = receiptAttachment.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+      const fileType = ext === 'pdf' ? 'pdf' : (ext === 'doc' || ext === 'docx') ? 'word' : 'image';
+      const newStoredDoc: StoredDocument = {
+        id: `doc_${receiptAttachment.id || Date.now()}`,
+        title: receiptAttachment.title || `Чек/накладная: ${categoryLabel} (${amount} ${currency})`,
+        category: 'receipts',
+        categoryLabel: 'Чеки и квитанции',
+        fileName: receiptAttachment.fileName || 'chek_rashod.pdf',
+        fileSize: receiptAttachment.fileSize || '1.6 MB',
+        fileSizeBytes: 1677721,
+        fileType,
+        fileExtension: ext,
+        mimeType: ext === 'pdf' ? 'application/pdf' : 'image/jpeg',
+        dataUrl: receiptAttachment.previewUrl,
+        description: `${description}. Поставщик: ${supplierName || '—'}. Создал: ${currentUser.name} (${currentUser.roleLabel}).`,
+        uploadedAt: nowStr,
+        uploadedBy: `${currentUser.name} (${currentUser.roleLabel})`,
+      };
+      setDocuments((prev) => [newStoredDoc, ...prev]);
+    }
   };
 
   const addVehicleDocument = (vehicleId: string, doc: any) => {
@@ -780,6 +814,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : v
       )
     );
+
+    // Automatically synchronize vehicle documents to Documents archive
+    const ext = doc.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+    const cat: DocumentCategory =
+      doc.type === 'insurance' ? 'insurance'
+      : doc.type === 'license' ? 'driver_licenses'
+      : doc.type === 'receipt' ? 'receipts'
+      : doc.type === 'service_act' ? 'warranty'
+      : 'other';
+    const catLabel =
+      cat === 'insurance' ? 'Страховые документы'
+      : cat === 'driver_licenses' ? 'Водительские удостоверения'
+      : cat === 'receipts' ? 'Чеки и квитанции'
+      : cat === 'warranty' ? 'Гарантийные документы'
+      : 'Прочие документы';
+
+    const newStoredDoc: StoredDocument = {
+      id: doc.id || `doc_${Date.now()}`,
+      title: doc.title,
+      category: cat,
+      categoryLabel: catLabel,
+      fileName: doc.fileName || 'dokument.pdf',
+      fileSize: doc.fileSize || '1.8 MB',
+      fileSizeBytes: 1887436,
+      fileType: ext === 'pdf' ? 'pdf' : (ext === 'doc' || ext === 'docx') ? 'word' : 'image',
+      fileExtension: ext,
+      mimeType: ext === 'pdf' ? 'application/pdf' : 'image/jpeg',
+      dataUrl: doc.previewUrl,
+      description: doc.notes || `Документ прикреплён к ТС в автопарке. Срок действия: ${doc.expiryDate || 'Бессрочно'}.`,
+      uploadedAt: doc.uploadedAt || 'Сегодня',
+      uploadedBy: doc.uploadedBy ? `${doc.uploadedBy}` : `${currentUser.name} (${currentUser.roleLabel})`,
+    };
+    setDocuments((prev) => [newStoredDoc, ...prev]);
   };
 
   const addVehicleServiceRecord = (vehicleId: string, srv: any) => {
@@ -929,6 +996,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPassengers(INITIAL_PASSENGERS);
     setAccounts(INITIAL_ACCOUNTS);
     setTransactions(INITIAL_TRANSACTIONS);
+    setActivities(INITIAL_ACTIVITIES);
+    setDocuments(INITIAL_DOCUMENTS);
+  };
+
+  const addDocument = (doc: Omit<StoredDocument, 'id' | 'uploadedAt'>): string => {
+    const newId = `doc_${Date.now()}`;
+    const now = new Date();
+    const dateFormatted = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newDoc: StoredDocument = {
+      ...doc,
+      id: newId,
+      uploadedAt: dateFormatted,
+    };
+    setDocuments((prev) => [newDoc, ...prev]);
+    logActivity({
+      action: 'create',
+      entityType: 'document',
+      entityName: newDoc.title,
+      details: `Загружен новый документ (${newDoc.categoryLabel}, файл: ${newDoc.fileName}, размер: ${newDoc.fileSize}).`,
+    });
+    return newId;
+  };
+
+  const updateDocument = (id: string, params: Partial<StoredDocument>) => {
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, ...params } : d))
+    );
+    const doc = documents.find((d) => d.id === id);
+    if (doc) {
+      logActivity({
+        action: 'update',
+        entityType: 'document',
+        entityName: params.title || doc.title,
+        details: `Обновлены сведения о документе «${params.title || doc.title}».`,
+      });
+    }
+  };
+
+  const deleteDocument = (id: string) => {
+    const doc = documents.find((d) => d.id === id);
+    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    if (doc) {
+      logActivity({
+        action: 'archive',
+        entityType: 'document',
+        entityName: doc.title,
+        details: `Документ «${doc.title}» (${doc.fileName}) удалён из архива.`,
+      });
+    }
   };
 
   const createRequest = (params: {
@@ -1120,7 +1236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logActivity = (params: {
     action: 'create' | 'update' | 'archive' | 'status_change';
-    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request';
+    entityType: 'vehicle' | 'trailer' | 'trip' | 'route' | 'booking' | 'request' | 'document';
     entityName: string;
     details: string;
   }) => {
@@ -1443,6 +1559,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleCheckpoint,
         executeAIPrompt,
         resetToDemo,
+        documents,
+        addDocument,
+        updateDocument,
+        deleteDocument,
       }}
     >
       {children}

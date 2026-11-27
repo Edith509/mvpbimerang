@@ -19,6 +19,7 @@ import {
   Sparkles,
   Inbox,
   History,
+  FolderArchive,
 } from 'lucide-react';
 import { useApp } from '@/lib/store';
 import { Role } from '@/types';
@@ -31,11 +32,13 @@ function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: 
       return [
         { href: '/trips', label: 'Мой рейс (посадка)',  icon: Navigation, highlight: true },
         { href: '/fleet', label: 'Моя машина и ТО',     icon: Bus },
+        { href: '/documents', label: 'Документы',       icon: FolderArchive },
       ];
     case 'mechanic':
       return [
         { href: '/fleet',    label: 'Автопарк и дефекты', icon: Bus,         highlight: true },
         { href: '/finances', label: 'Расходы на ремонт',  icon: Wallet },
+        { href: '/documents', label: 'Документы',         icon: FolderArchive },
         { href: '/team',     label: 'Команда и права',    icon: ShieldCheck },
       ];
     case 'accountant':
@@ -43,6 +46,7 @@ function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: 
         { href: '/finances', label: 'Финансы и кассы',  icon: Wallet,      highlight: true,
           badge: pendingCount > 0 ? `${pendingCount}` : undefined },
         { href: '/reports',  label: 'Отчётность',        icon: FileBarChart },
+        { href: '/documents',label: 'Документы',         icon: FolderArchive },
         { href: '/trips',    label: 'Рейсы и касса',    icon: Navigation },
         { href: '/team',     label: 'Команда и права',  icon: ShieldCheck },
       ];
@@ -57,6 +61,7 @@ function getNavItems(role: Role, pendingCount: number, unassignedRequestsCount: 
           badge: pendingCount > 0 ? `${pendingCount}` : undefined },
         { href: '/history',   label: 'История действий',    icon: History },
         { href: '/reports',   label: 'Отчётность',          icon: FileBarChart },
+        { href: '/documents', label: 'Документы',           icon: FolderArchive },
         { href: '/customers', label: 'База клиентов',       icon: Users },
         { href: '/team',      label: 'Команда и права',     icon: ShieldCheck },
         { href: '/settings',  label: 'Настройки компании',  icon: Settings },
@@ -95,6 +100,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     '/finances': 'Финансы',
     '/history': 'История',
     '/reports': 'Отчёты',
+    '/documents': 'Документы',
     '/customers': 'Клиенты',
     '/team': 'Команда',
     '/settings': 'Настройки',
